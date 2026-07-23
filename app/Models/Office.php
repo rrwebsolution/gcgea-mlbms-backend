@@ -18,4 +18,9 @@ class Office extends Model
     {
         return $this->hasMany(Member::class);
     }
+
+    public function aliases(): HasMany
+    {
+        return $this->hasMany(OfficeAlias::class);
+    }
 }

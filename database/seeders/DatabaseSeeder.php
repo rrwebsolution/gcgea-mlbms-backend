@@ -17,11 +17,13 @@ class DatabaseSeeder extends Seeder
         $this->call([
             PermissionSeeder::class,
             RoleSeeder::class,
+            WorkflowDefinitionSeeder::class,
             UserSeeder::class,
             OfficeSeeder::class,
             // MemberSeeder::class,
             LoanTypeSeeder::class,
             BenefitTypeSeeder::class,
+            DeductionTypeSeeder::class,
             // ContributionSeeder::class,
             // LoanSeeder::class,
             // LoanPaymentSeeder::class,

@@ -7,14 +7,23 @@ use App\Http\Resources\BenefitApplicationResource;
 use App\Models\BenefitApplication;
 use App\Models\BenefitType;
 use App\Models\Member;
+use App\Services\ApprovalWorkflowService;
+use App\Services\AuditLogService;
 use App\Services\BenefitEligibilityService;
+use App\Services\BenefitProrationService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class BenefitApplicationController extends Controller
 {
+    public function __construct(
+        private readonly ApprovalWorkflowService $workflow,
+        private readonly AuditLogService $auditLog,
+    ) {}
+
     public function index(Request $request)
     {
         $query = BenefitApplication::with(['member.office', 'benefitType']);
@@ -39,7 +48,51 @@ class BenefitApplicationController extends Controller
         return new BenefitApplicationResource($benefit->load(['member.office', 'benefitType']));
     }
 
-    public function store(BenefitRequest $request, BenefitEligibilityService $eligibilityService)
+    public function review(Request $request, BenefitApplication $benefit)
+    {
+        $this->authorize('act', [$benefit, 'review']);
+        $this->workflow->act($benefit, $request->user(), 'review', remarks: $request->input('remarks'));
+
+        return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
+    }
+
+    public function approve(Request $request, BenefitApplication $benefit)
+    {
+        $this->authorize('act', [$benefit, 'approve']);
+        $this->workflow->act($benefit, $request->user(), 'approve', remarks: $request->input('remarks'));
+
+        return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
+    }
+
+    public function reject(Request $request, BenefitApplication $benefit)
+    {
+        $request->validate(['remarks' => ['required', 'string']]);
+        $this->authorize('act', [$benefit, 'reject']);
+        $this->workflow->act($benefit, $request->user(), 'reject', remarks: $request->string('remarks')->toString());
+
+        return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
+    }
+
+    public function returnForRevision(Request $request, BenefitApplication $benefit)
+    {
+        $request->validate(['remarks' => ['required', 'string']]);
+        $this->authorize('act', [$benefit, 'return']);
+        $this->workflow->act($benefit, $request->user(), 'return', remarks: $request->string('remarks')->toString());
+
+        return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
+    }
+
+    public function release(Request $request, BenefitApplication $benefit)
+    {
+        $this->authorize('act', [$benefit, 'release']);
+        $this->workflow->act($benefit, $request->user(), 'release', [
+            'release_date' => now(),
+        ], $request->input('remarks'));
+
+        return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
+    }
+
+    public function store(BenefitRequest $request, BenefitEligibilityService $eligibilityService, BenefitProrationService $prorationService)
     {
         if (! $request->user()->hasPermission('benefits.create')) {
             abort(403, "You don't have permission to perform this action.");
@@ -51,7 +104,7 @@ class BenefitApplicationController extends Controller
         }
 
         $member = Member::findOrFail($request->input('memberId'));
-        $computed = $this->computeBenefitFields($request, $eligibilityService, $member);
+        $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
 
         $benefit = DB::transaction(function () use ($request, $member, $asDraft, $computed) {
             $benefit = BenefitApplication::create([
@@ -65,6 +118,12 @@ class BenefitApplicationController extends Controller
             ]);
             $benefit->update(['application_number' => 'GCGEA-BEN-'.$computed['applicationDate']->year.'-'.str_pad((string) $benefit->id, 6, '0', STR_PAD_LEFT)]);
 
+            if ($asDraft) {
+                $this->workflow->recordDraftAction($benefit, $request->user(), 'draft_created');
+            } else {
+                $this->workflow->startInstance($benefit, 'benefit_application', $request->user());
+            }
+
             return $benefit;
         });
 
@@ -75,7 +134,7 @@ class BenefitApplicationController extends Controller
      * Edits a draft application in place — never available once it has
      * moved past Draft status (the approval workflow owns it then).
      */
-    public function update(BenefitRequest $request, BenefitEligibilityService $eligibilityService, BenefitApplication $benefit)
+    public function update(BenefitRequest $request, BenefitEligibilityService $eligibilityService, BenefitProrationService $prorationService, BenefitApplication $benefit)
     {
         if (! $request->user()->hasPermission('benefits.update')) {
             abort(403, "You don't have permission to perform this action.");
@@ -90,7 +149,7 @@ class BenefitApplicationController extends Controller
         }
 
         $member = Member::findOrFail($request->input('memberId'));
-        $computed = $this->computeBenefitFields($request, $eligibilityService, $member);
+        $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
 
         DB::transaction(function () use ($request, $member, $asDraft, $computed, $benefit) {
             $benefit->update([
@@ -100,22 +159,60 @@ class BenefitApplicationController extends Controller
                 'status' => $asDraft ? 'Draft' : 'Submitted',
                 'draft_current_step' => $request->integer('draftCurrentStep', $benefit->draft_current_step ?? 1),
             ]);
+
+            if ($asDraft) {
+                $this->workflow->recordDraftAction($benefit, $request->user(), 'draft_updated');
+            } else {
+                $this->workflow->startInstance($benefit, 'benefit_application', $request->user());
+            }
         });
 
         return new BenefitApplicationResource($benefit->load(['member.office', 'benefitType']));
+    }
+
+    public function destroy(Request $request, BenefitApplication $benefit)
+    {
+        if ($benefit->status !== 'Draft') {
+            abort(403, 'Only draft benefit applications can be deleted.');
+        }
+
+        $isOwn = $benefit->created_by === $request->user()->full_name;
+        $allowed = ($isOwn && $request->user()->hasPermission('drafts.delete_own'))
+            || $request->user()->hasPermission('drafts.delete_all');
+
+        if (! $allowed) {
+            abort(403, "You don't have permission to perform this action.");
+        }
+
+        DB::transaction(function () use ($benefit, $request) {
+            $this->auditLog->record($request->user(), $benefit, 'draft_deleted');
+            $benefit->delete();
+        });
+
+        return response()->json(['message' => 'Draft deleted successfully.']);
     }
 
     /**
      * Shared compute step for store()/update() — null-safe when the benefit
      * type/amount aren't chosen yet (expected for an early-stage draft).
      *
-     * @return array{applicationDate: \Illuminate\Support\Carbon, columns: array<string, mixed>}
+     * @return array{applicationDate: Carbon, columns: array<string, mixed>}
      */
-    private function computeBenefitFields(BenefitRequest $request, BenefitEligibilityService $eligibilityService, Member $member): array
+    private function computeBenefitFields(BenefitRequest $request, BenefitEligibilityService $eligibilityService, BenefitProrationService $prorationService, Member $member): array
     {
         $benefitTypeId = $request->input('benefitTypeId');
         $benefitType = $benefitTypeId ? BenefitType::find($benefitTypeId) : null;
         $requestedAmount = $request->filled('requestedAmount') ? (float) $request->input('requestedAmount') : null;
+
+        // Server-computed and authoritative for prorated benefit types (Resolution
+        // No. 24-2026) — overrides whatever the client sent, since the amount
+        // depends on the member's contribution history, not free entry.
+        if ($benefitType) {
+            $prorated = $prorationService->computeAmount($benefitType, $member, $request->integer('fiscalYear') ?: null);
+            if ($prorated['amount'] !== null) {
+                $requestedAmount = $prorated['amount'];
+            }
+        }
 
         $eligibility = [];
         $eligibilityResult = null;

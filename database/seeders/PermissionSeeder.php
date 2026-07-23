@@ -31,9 +31,12 @@ class PermissionSeeder extends Seeder
                     ['members.update', 'Update Members', 'Edit member records'],
                     ['members.archive', 'Archive Members', 'Archive member records'],
                     ['members.restore', 'Restore Members', 'Restore archived members'],
-                    ['members.import', 'Import Members', 'Bulk import members'],
                     ['members.export', 'Export Members', 'Export member records'],
                     ['members.print', 'Print Members', 'Print member list/profile'],
+                    ['members.review', 'Review Members', 'Review submitted member registrations'],
+                    ['members.approve', 'Approve Members', 'Approve member registrations'],
+                    ['members.reject', 'Reject Members', 'Reject member registrations'],
+                    ['members.auto_approve', 'Auto Approve Members', 'Automatically approve new and imported members'],
                 ],
             ],
             'beneficiaries' => [
@@ -81,6 +84,7 @@ class PermissionSeeder extends Seeder
                     ['loans.approve', 'Approve Loans', 'Approve loan applications'],
                     ['loans.reject', 'Reject Loans', 'Reject loan applications'],
                     ['loans.release', 'Release Loans', 'Release approved loans'],
+                    ['loans.reloan', 'Initiate Reloan', 'Create a reloan application from an existing, eligible loan'],
                     ['loans.cancel', 'Cancel Loans', 'Cancel loan applications'],
                     ['loans.restructure', 'Restructure Loans', 'Restructure an existing loan'],
                     ['loans.override_eligibility', 'Override Loan Eligibility', 'Override failed eligibility checks with a documented reason'],
@@ -165,6 +169,13 @@ class PermissionSeeder extends Seeder
                     ['audit_logs.view_sensitive_changes', 'View Sensitive Changes', 'View before/after values of sensitive fields'],
                 ],
             ],
+            'approval_workflow' => [
+                'label' => 'Approval Workflow',
+                'permissions' => [
+                    ['approval_workflow.view', 'View Approval Workflow', 'View workflow stage configuration'],
+                    ['approval_workflow.configure', 'Configure Approval Workflow', 'Create/edit workflow stage assignments'],
+                ],
+            ],
             'drafts' => [
                 'label' => 'Drafts',
                 'permissions' => [
@@ -178,6 +189,68 @@ class PermissionSeeder extends Seeder
                     ['drafts.duplicate', 'Duplicate Drafts', 'Duplicate an existing draft'],
                     ['drafts.transfer', 'Transfer Draft Ownership', 'Transfer a draft to another user'],
                     ['drafts.submit', 'Submit Drafts', 'Finalize a draft into a real record'],
+                ],
+            ],
+            'member_import' => [
+                'label' => 'Member Import',
+                'permissions' => [
+                    ['member_import.view', 'View Member Imports', 'View member import history, batch detail, and error/audit reports'],
+                    ['member_import.create', 'Run Member Import', 'Upload a workbook, select a worksheet, map columns, preview/validate, and commit a member import batch'],
+                    ['member_import.resolve_duplicates', 'Resolve Member Duplicates', 'Act on possible/probable/exact duplicate-member matches during import, including merge decisions'],
+                    ['member_import.manage_offices', 'Manage Import Office Mapping', 'Create a new office or save an office alias while resolving unmapped office names during import'],
+                ],
+            ],
+            'payroll_manual' => [
+                'label' => 'Manual Payroll Entry',
+                'permissions' => [
+                    ['payroll.manual.view', 'View Manual Payroll', 'View manual payroll deduction entries'],
+                    ['payroll.manual.create', 'Create Manual Payroll', 'Create and save payroll deduction drafts'],
+                    ['payroll.manual.edit', 'Edit Manual Payroll', 'Edit draft payroll deductions'],
+                    ['payroll.manual.post', 'Post Manual Payroll', 'Post payroll deductions to financial ledgers'],
+                    ['payroll.manual.delete', 'Delete Manual Payroll', 'Delete draft payroll deductions'],
+                    ['payroll.manual.print', 'Print Manual Payroll', 'Print payroll deduction records'],
+                    ['payroll.manual.override', 'Override Payroll Amounts', 'Override configured dues and Pabaon amounts'],
+                ],
+            ],
+            'payroll_bulk' => [
+                'label' => 'Bulk Payroll Entry',
+                'permissions' => [
+                    ['payroll.bulk.view', 'View Bulk Payroll', 'View bulk payroll deduction entries'],
+                    ['payroll.bulk.create', 'Create Bulk Payroll', 'Load members and save bulk payroll deduction drafts'],
+                    ['payroll.bulk.edit', 'Edit Bulk Payroll', 'Edit draft bulk payroll deductions'],
+                    ['payroll.bulk.post', 'Post Bulk Payroll', 'Post bulk payroll deductions to financial ledgers'],
+                    ['payroll.bulk.delete', 'Delete Bulk Payroll', 'Delete draft bulk payroll deductions'],
+                    ['payroll.bulk.print', 'Print Bulk Payroll', 'Print bulk payroll deduction records'],
+                    ['payroll.bulk.override', 'Override Bulk Payroll Amounts', 'Override configured dues and Pabaon amounts in bulk entry'],
+                ],
+            ],
+            'payroll_import' => [
+                'label' => 'Payroll Import',
+                'permissions' => [
+                    ['payroll.import.view', 'View Payroll Import', 'Access the Payroll Import screen and run imports'],
+                    ['payroll.import.rollback', 'Rollback Payroll Imports', 'Reverse a committed payroll import batch'],
+                ],
+            ],
+            'payroll_history' => [
+                'label' => 'Payroll History',
+                'permissions' => [
+                    ['payroll.history.view', 'View Payroll History', 'View unified payroll deduction history — manual, bulk, and imported'],
+                ],
+            ],
+            'deduction_types' => [
+                'label' => 'Deduction Types',
+                'permissions' => [
+                    ['deduction_types.view', 'View Deduction Types', 'View configured deduction types'],
+                    ['deduction_types.create', 'Create Deduction Types', 'Add deduction types'],
+                    ['deduction_types.update', 'Update Deduction Types', 'Edit deduction types'],
+                    ['deduction_types.deactivate', 'Deactivate Deduction Types', 'Enable/disable a deduction type'],
+                ],
+            ],
+            'deductions' => [
+                'label' => 'Deductions',
+                'permissions' => [
+                    ['deductions.view', 'View Deductions', 'View deduction records'],
+                    ['deductions.void', 'Void Deductions', 'Void posted deduction records'],
                 ],
             ],
             'settings' => [

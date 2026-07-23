@@ -30,10 +30,15 @@ class LoanTypeRequest extends FormRequest
             'defaultInterestRate' => ['required', 'numeric', 'min:0'],
             'interestMethod' => ['required', Rule::in(['Flat Interest', 'Diminishing Balance', 'Zero Interest', 'Custom'])],
             'processingFee' => ['required', 'numeric', 'min:0'],
+            'serviceChargePercent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'maxTermMonths' => ['required', 'integer', 'min:1'],
             'requiredMembershipMonths' => ['required', 'integer', 'min:0'],
             'requiredContributionMonths' => ['required', 'integer', 'min:0'],
             'allowExistingActiveLoan' => ['sometimes', 'boolean'],
+            'incomeBrackets' => ['sometimes', 'array'],
+            'incomeBrackets.*.minNetPay' => ['required_with:incomeBrackets', 'numeric', 'min:0'],
+            'incomeBrackets.*.maxNetPay' => ['nullable', 'numeric', 'gte:incomeBrackets.*.minNetPay'],
+            'incomeBrackets.*.loanableAmount' => ['required_with:incomeBrackets', 'numeric', 'min:0'],
             'status' => ['required', Rule::in(['Active', 'Inactive'])],
         ];
     }
@@ -55,11 +60,18 @@ class LoanTypeRequest extends FormRequest
             'default_interest_rate' => $data['defaultInterestRate'],
             'interest_method' => $data['interestMethod'],
             'processing_fee' => $data['processingFee'],
+            'service_charge_percent' => $data['serviceChargePercent'] ?? null,
             'max_term_months' => $data['maxTermMonths'],
             'required_membership_months' => $data['requiredMembershipMonths'],
             'required_contribution_months' => $data['requiredContributionMonths'],
             'allow_existing_active_loan' => $data['allowExistingActiveLoan'] ?? false,
             'status' => $data['status'],
         ];
+    }
+
+    /** @return array<int, array{minNetPay: float, maxNetPay: float|null, loanableAmount: float}> */
+    public function incomeBracketsInput(): array
+    {
+        return $this->validated('incomeBrackets', []) ?? [];
     }
 }

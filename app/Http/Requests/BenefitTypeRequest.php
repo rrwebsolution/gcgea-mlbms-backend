@@ -27,6 +27,14 @@ class BenefitTypeRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'defaultAmount' => ['required', 'numeric', 'min:0'],
             'maximumAmount' => ['required', 'numeric', 'min:0', 'gte:defaultAmount'],
+            'prorationBasis' => ['nullable', Rule::in(['dues', 'pabaon'])],
+            'prorationTiers' => ['sometimes', 'array'],
+            'prorationTiers.*.minMonths' => ['required_with:prorationTiers', 'integer', 'min:0'],
+            'prorationTiers.*.maxMonths' => ['nullable', 'integer', 'gte:prorationTiers.*.minMonths'],
+            'prorationTiers.*.percentage' => ['required_with:prorationTiers', 'numeric', 'min:0', 'max:100'],
+            'fyAmounts' => ['sometimes', 'array'],
+            'fyAmounts.*.fiscalYear' => ['nullable', 'integer', 'min:2000'],
+            'fyAmounts.*.baseAmount' => ['required_with:fyAmounts', 'numeric', 'min:0'],
             'eligibilityRequirements' => ['nullable', 'string'],
             'requiredMembershipMonths' => ['required', 'integer', 'min:0'],
             'frequencyLimit' => ['nullable', 'string', 'max:255'],
@@ -51,6 +59,7 @@ class BenefitTypeRequest extends FormRequest
             'description' => $data['description'] ?? '',
             'default_amount' => $data['defaultAmount'],
             'maximum_amount' => $data['maximumAmount'],
+            'proration_basis' => $data['prorationBasis'] ?? null,
             'eligibility_requirements' => $data['eligibilityRequirements'] ?? '',
             'required_membership_months' => $data['requiredMembershipMonths'],
             'frequency_limit' => $data['frequencyLimit'] ?? '',
@@ -58,5 +67,17 @@ class BenefitTypeRequest extends FormRequest
             'approval_required' => $data['approvalRequired'] ?? true,
             'status' => $data['status'],
         ];
+    }
+
+    /** @return array<int, array{minMonths: int, maxMonths: int|null, percentage: float}> */
+    public function prorationTiersInput(): array
+    {
+        return $this->validated('prorationTiers', []) ?? [];
+    }
+
+    /** @return array<int, array{fiscalYear: int|null, baseAmount: float}> */
+    public function fyAmountsInput(): array
+    {
+        return $this->validated('fyAmounts', []) ?? [];
     }
 }

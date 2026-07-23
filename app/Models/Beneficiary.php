@@ -15,6 +15,8 @@ class Beneficiary extends Model
         'contact_number',
         'address',
         'share_percentage',
+        'priority_order',
+        'source',
     ];
 
     protected function casts(): array

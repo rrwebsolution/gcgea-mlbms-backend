@@ -8,6 +8,7 @@ use App\Models\LoanType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class LoanTypeController extends Controller
 {
@@ -19,7 +20,9 @@ class LoanTypeController extends Controller
      */
     public function index(): AnonymousResourceCollection
     {
-        return LoanTypeResource::collection(LoanType::orderByDesc('created_at')->get());
+        return LoanTypeResource::collection(
+            LoanType::with('incomeBrackets')->orderByDesc('created_at')->get()
+        );
     }
 
     public function store(LoanTypeRequest $request): LoanTypeResource
@@ -27,17 +30,34 @@ class LoanTypeController extends Controller
         $this->authorizeLoanSettings($request);
 
         $loanType = LoanType::create($request->modelAttributes());
+        $this->syncIncomeBrackets($loanType, $request);
 
-        return new LoanTypeResource($loanType);
+        return new LoanTypeResource($loanType->load('incomeBrackets'));
     }
 
     public function update(LoanTypeRequest $request, LoanType $loanType): LoanTypeResource
     {
         $this->authorizeLoanSettings($request);
 
-        $loanType->update($request->modelAttributes());
+        DB::transaction(function () use ($loanType, $request) {
+            $loanType->update($request->modelAttributes());
+            $this->syncIncomeBrackets($loanType, $request);
+        });
 
-        return new LoanTypeResource($loanType);
+        return new LoanTypeResource($loanType->fresh()->load('incomeBrackets'));
+    }
+
+    /** Full replace-sync of a loan type's income brackets — same convention as benefit type proration tiers. */
+    private function syncIncomeBrackets(LoanType $loanType, LoanTypeRequest $request): void
+    {
+        $loanType->incomeBrackets()->delete();
+        foreach ($request->incomeBracketsInput() as $bracket) {
+            $loanType->incomeBrackets()->create([
+                'min_net_pay' => $bracket['minNetPay'],
+                'max_net_pay' => $bracket['maxNetPay'] ?? null,
+                'loanable_amount' => $bracket['loanableAmount'],
+            ]);
+        }
     }
 
     public function destroy(Request $request, LoanType $loanType): JsonResponse

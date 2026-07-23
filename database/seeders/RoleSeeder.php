@@ -5,10 +5,11 @@ namespace Database\Seeders;
 use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 /**
- * Mirrors src/services/mock-data/roles.ts + the permissionsForRole() presets in
- * src/constants/permissions.ts — keep the two in sync when roles change.
+ * Mirrors the permissionsForRole() presets in src/constants/permissions.ts —
+ * keep the two in sync when roles change.
  */
 class RoleSeeder extends Seeder
 {
@@ -23,18 +24,20 @@ class RoleSeeder extends Seeder
         $membershipOfficer = [
             'dashboard.view',
             'members.view', 'members.create', 'members.update', 'members.archive', 'members.restore',
-            'members.import', 'members.export', 'members.print',
+            'members.export', 'members.print',
+            'members.review', 'members.approve', 'members.reject', 'members.auto_approve',
             'beneficiaries.view', 'beneficiaries.create', 'beneficiaries.update', 'beneficiaries.delete',
             'offices.view',
             'reports.view', 'reports.export', 'reports.print', 'reports.member',
             'drafts.view_own', 'drafts.create', 'drafts.update_own', 'drafts.delete_own', 'drafts.submit',
+            'member_import.view', 'member_import.create', 'member_import.resolve_duplicates', 'member_import.manage_offices',
         ];
 
         $loanOfficer = [
             'dashboard.view',
             'members.view',
             'offices.view',
-            'loans.view', 'loans.create', 'loans.update', 'loans.submit', 'loans.print', 'loans.export',
+            'loans.view', 'loans.create', 'loans.update', 'loans.submit', 'loans.review', 'loans.reloan', 'loans.print', 'loans.export',
             'loan_payments.view', 'loan_payments.create', 'loan_payments.print_receipt',
             'reports.view', 'reports.export', 'reports.print', 'reports.loan',
             'drafts.view_own', 'drafts.create', 'drafts.update_own', 'drafts.delete_own', 'drafts.submit',
@@ -49,14 +52,20 @@ class RoleSeeder extends Seeder
             'contributions.export', 'contributions.print',
             'loan_payments.view', 'loan_payments.create', 'loan_payments.update', 'loan_payments.void',
             'loan_payments.import', 'loan_payments.print_receipt', 'loan_payments.export',
+            'loans.view', 'loans.release',
+            'benefits.view', 'benefits.release',
             'reports.view', 'reports.export', 'reports.print', 'reports.financial', 'reports.contribution',
+            'payroll.manual.view', 'payroll.manual.create', 'payroll.manual.edit', 'payroll.manual.post',
+            'payroll.bulk.view', 'payroll.bulk.create', 'payroll.bulk.edit', 'payroll.bulk.post',
+            'payroll.import.view', 'payroll.import.rollback', 'payroll.history.view',
+            'deduction_types.view', 'deductions.view', 'deductions.void',
         ];
 
         $benefitsOfficer = [
             'dashboard.view',
             'members.view',
             'offices.view',
-            'benefits.view', 'benefits.create', 'benefits.update', 'benefits.submit', 'benefits.print', 'benefits.export',
+            'benefits.view', 'benefits.create', 'benefits.update', 'benefits.submit', 'benefits.review', 'benefits.print', 'benefits.export',
             'reports.view', 'reports.export', 'reports.print', 'reports.benefit',
             'drafts.view_own', 'drafts.create', 'drafts.update_own', 'drafts.delete_own', 'drafts.submit',
         ];
@@ -65,9 +74,9 @@ class RoleSeeder extends Seeder
             'dashboard.view',
             'members.view',
             'offices.view',
-            'loans.view', 'loans.review', 'loans.recommend', 'loans.approve', 'loans.reject', 'loans.release',
+            'loans.view', 'loans.review', 'loans.recommend', 'loans.approve', 'loans.reject',
             'loans.restructure', 'loans.print', 'loans.export',
-            'benefits.view', 'benefits.review', 'benefits.approve', 'benefits.reject', 'benefits.release',
+            'benefits.view', 'benefits.review', 'benefits.approve', 'benefits.reject',
             'benefits.print', 'benefits.export',
             'reports.view', 'reports.export', 'reports.print', 'reports.loan', 'reports.benefit',
         ];
@@ -107,6 +116,13 @@ class RoleSeeder extends Seeder
             );
 
             $role->permissions()->sync($definition['permissions']);
+        }
+
+        // The explicit ids above (needed so this seeder stays idempotent across
+        // re-runs) bypass Postgres' auto-increment sequence — resync it so a
+        // role created afterward via the admin UI doesn't collide with a seeded id.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("SELECT setval('roles_id_seq', (SELECT MAX(id) FROM roles))");
         }
     }
 }

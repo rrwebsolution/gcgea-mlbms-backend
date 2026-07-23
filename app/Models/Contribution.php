@@ -11,6 +11,7 @@ class Contribution extends Model
         'reference_number',
         'member_id',
         'contribution_period',
+        'contribution_type',
         'amount',
         'payment_date',
         'payment_method',

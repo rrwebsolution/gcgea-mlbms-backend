@@ -23,6 +23,18 @@ class BenefitTypeResource extends JsonResource
             'description' => (string) $this->description,
             'defaultAmount' => (float) $this->default_amount,
             'maximumAmount' => (float) $this->maximum_amount,
+            'prorationBasis' => $this->proration_basis,
+            'prorationTiers' => $this->whenLoaded('prorationTiers', fn () => $this->prorationTiers->map(fn ($tier) => [
+                'id' => (string) $tier->id,
+                'minMonths' => (int) $tier->min_months,
+                'maxMonths' => $tier->max_months === null ? null : (int) $tier->max_months,
+                'percentage' => (float) $tier->percentage,
+            ]), []),
+            'fyAmounts' => $this->whenLoaded('fyAmounts', fn () => $this->fyAmounts->map(fn ($fy) => [
+                'id' => (string) $fy->id,
+                'fiscalYear' => $fy->fiscal_year === null ? null : (int) $fy->fiscal_year,
+                'baseAmount' => (float) $fy->base_amount,
+            ]), []),
             'eligibilityRequirements' => (string) $this->eligibility_requirements,
             'requiredMembershipMonths' => (int) $this->required_membership_months,
             'frequencyLimit' => (string) $this->frequency_limit,

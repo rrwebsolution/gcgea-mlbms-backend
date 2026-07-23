@@ -19,7 +19,9 @@ class BenefitTypeController extends Controller
      */
     public function index(): AnonymousResourceCollection
     {
-        return BenefitTypeResource::collection(BenefitType::orderByDesc('created_at')->get());
+        return BenefitTypeResource::collection(
+            BenefitType::with(['prorationTiers', 'fyAmounts'])->orderByDesc('created_at')->get()
+        );
     }
 
     public function store(BenefitTypeRequest $request): BenefitTypeResource
@@ -27,8 +29,9 @@ class BenefitTypeController extends Controller
         $this->authorizeBenefitSettings($request);
 
         $benefitType = BenefitType::create($request->modelAttributes());
+        $this->syncProration($benefitType, $request);
 
-        return new BenefitTypeResource($benefitType);
+        return new BenefitTypeResource($benefitType->load(['prorationTiers', 'fyAmounts']));
     }
 
     public function update(BenefitTypeRequest $request, BenefitType $benefitType): BenefitTypeResource
@@ -36,8 +39,34 @@ class BenefitTypeController extends Controller
         $this->authorizeBenefitSettings($request);
 
         $benefitType->update($request->modelAttributes());
+        $this->syncProration($benefitType, $request);
 
-        return new BenefitTypeResource($benefitType);
+        return new BenefitTypeResource($benefitType->load(['prorationTiers', 'fyAmounts']));
+    }
+
+    /**
+     * Full replace-sync of a benefit type's proration tiers and fiscal-year
+     * amounts — same "send the whole array every save" convention already
+     * used for member beneficiaries.
+     */
+    private function syncProration(BenefitType $benefitType, BenefitTypeRequest $request): void
+    {
+        $benefitType->prorationTiers()->delete();
+        foreach ($request->prorationTiersInput() as $tier) {
+            $benefitType->prorationTiers()->create([
+                'min_months' => $tier['minMonths'],
+                'max_months' => $tier['maxMonths'] ?? null,
+                'percentage' => $tier['percentage'],
+            ]);
+        }
+
+        $benefitType->fyAmounts()->delete();
+        foreach ($request->fyAmountsInput() as $fy) {
+            $benefitType->fyAmounts()->create([
+                'fiscal_year' => $fy['fiscalYear'] ?? null,
+                'base_amount' => $fy['baseAmount'],
+            ]);
+        }
     }
 
     public function destroy(Request $request, BenefitType $benefitType): JsonResponse

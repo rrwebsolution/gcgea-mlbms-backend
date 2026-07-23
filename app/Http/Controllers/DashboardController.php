@@ -12,6 +12,7 @@ use App\Models\Contribution;
 use App\Models\Loan;
 use App\Models\LoanAmortizationEntry;
 use App\Models\LoanPayment;
+use App\Models\LoanSetting;
 use App\Models\Member;
 use App\Models\Office;
 use Illuminate\Http\Request;
@@ -39,7 +40,25 @@ class DashboardController extends Controller
             'monthlyContributionsCollected' => (float) Contribution::where('status', 'Posted')
                 ->where('contribution_period', $currentPeriod)
                 ->sum('amount'),
+
+            'pendingReloanApplications' => Loan::where('application_type', 'reloan')->where('status', 'Submitted')->count(),
+            'reloansAwaitingReview' => Loan::where('application_type', 'reloan')->where('status', 'Under Review')->count(),
+            'approvedReloans' => Loan::where('application_type', 'reloan')->where('status', 'Approved')->count(),
+            'reloansAwaitingRelease' => Loan::where('application_type', 'reloan')->where('status', 'Approved')->count(),
+            'membersBecomingLoanEligibleThisMonth' => $this->membersBecomingEligibleThisMonth(),
         ]);
+    }
+
+    private function membersBecomingEligibleThisMonth(): int
+    {
+        $requiredMonths = LoanSetting::current()->minimum_membership_months;
+        $windowStart = now()->subMonths($requiredMonths)->startOfMonth();
+        $windowEnd = now()->subMonths($requiredMonths)->endOfMonth();
+
+        return Member::where('is_archived', false)
+            ->where('membership_status', 'Active')
+            ->whereBetween('membership_date', [$windowStart, $windowEnd])
+            ->count();
     }
 
     public function monthlyLoanReleases()

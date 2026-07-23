@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Member extends Model
 {
@@ -30,16 +32,24 @@ class Member extends Model
         'membership_type',
         'membership_date',
         'membership_status',
+        'net_pay',
         'retiree_status',
         'remarks',
         'is_archived',
         'archived_at',
         'archived_reason',
         'created_by',
+        'imported_from_batch_id',
         'is_draft',
         'draft_reference_no',
         'draft_completion_percentage',
         'draft_current_step',
+        'registration_status',
+        'approval_source',
+        'submitted_by_user_id',
+        'submitted_at',
+        'approved_by_user_id',
+        'approved_at',
     ];
 
     protected function casts(): array
@@ -48,9 +58,12 @@ class Member extends Model
             'birthdate' => 'date',
             'date_of_regular_appointment' => 'date',
             'membership_date' => 'date',
+            'net_pay' => 'decimal:2',
             'is_archived' => 'boolean',
             'archived_at' => 'datetime',
             'is_draft' => 'boolean',
+            'submitted_at' => 'datetime',
+            'approved_at' => 'datetime',
         ];
     }
 
@@ -86,6 +99,16 @@ class Member extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(MemberDocument::class);
+    }
+
+    public function approvalInstance(): MorphOne
+    {
+        return $this->morphOne(ApprovalInstance::class, 'subject');
+    }
+
+    public function approvalActions(): MorphMany
+    {
+        return $this->morphMany(ApprovalAction::class, 'subject')->orderBy('acted_at');
     }
 
     public function getFullNameAttribute(): string

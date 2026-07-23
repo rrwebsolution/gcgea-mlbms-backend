@@ -20,6 +20,7 @@ class ContributionResource extends JsonResource
             'memberName' => $this->member?->full_name,
             'officeName' => $this->member?->office?->name,
             'contributionPeriod' => $this->contribution_period,
+            'contributionType' => $this->contribution_type,
             'amount' => (float) $this->amount,
             'paymentDate' => $this->payment_date?->toDateString(),
             'paymentMethod' => $this->payment_method,

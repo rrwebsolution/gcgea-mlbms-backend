@@ -68,6 +68,12 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    /** The office this user belongs to — used by the "office" approver-assignment type. */
+    public function office(): BelongsTo
+    {
+        return $this->belongsTo(Office::class);
+    }
+
     /** Roles stacked on top of the primary role. */
     public function additionalRoles(): BelongsToMany
     {

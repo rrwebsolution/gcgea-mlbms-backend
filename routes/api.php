@@ -1,16 +1,33 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\WorkflowDefinitionController;
+use App\Http\Controllers\Admin\MembershipApprovalSettingController;
+use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BenefitApplicationController;
 use App\Http\Controllers\BenefitTypeController;
 use App\Http\Controllers\ContributionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeductionController;
+use App\Http\Controllers\DeductionTypeController;
+use App\Http\Controllers\EmploymentStatusController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\LoanPaymentController;
+use App\Http\Controllers\LoanSettingsController;
 use App\Http\Controllers\LoanTypeController;
+use App\Http\Controllers\ManualPayrollDeductionController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\MemberDocumentController;
+use App\Http\Controllers\MemberImportController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OfficeController;
+use App\Http\Controllers\PayrollImportController;
+use App\Http\Controllers\ReloanController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\SystemSettingController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -26,6 +43,16 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/report-exports/pdf', [ReportExportController::class, 'pdf']);
+    Route::post('/report-exports/excel', [ReportExportController::class, 'excel']);
+
+    Route::get('/system-settings', [SystemSettingController::class, 'index']);
+    Route::put('/system-settings/{section}', [SystemSettingController::class, 'update']);
+    Route::get('/employment-statuses', [EmploymentStatusController::class, 'index']);
+    Route::post('/employment-statuses', [EmploymentStatusController::class, 'store']);
+    Route::put('/employment-statuses/{employmentStatus}', [EmploymentStatusController::class, 'update']);
+    Route::patch('/employment-statuses/{employmentStatus}/toggle-status', [EmploymentStatusController::class, 'toggleStatus']);
+
     // Offices
     Route::get('/offices/all', [OfficeController::class, 'all']);
     Route::get('/offices', [OfficeController::class, 'index']);
@@ -40,19 +67,43 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/members', [MemberController::class, 'store']);
     Route::get('/members/{member}', [MemberController::class, 'show']);
     Route::put('/members/{member}', [MemberController::class, 'update']);
+    Route::patch('/members/{member}/membership-status', [MemberController::class, 'updateMembershipStatus']);
     Route::post('/members/{member}/submit', [MemberController::class, 'submit']);
+    Route::post('/members/{member}/approve', [MemberController::class, 'approve']);
+    Route::post('/members/{member}/reject', [MemberController::class, 'reject']);
     Route::post('/members/{member}/archive', [MemberController::class, 'archive']);
     Route::post('/members/{member}/restore', [MemberController::class, 'restore']);
     Route::post('/members/{member}/photo', [MemberDocumentController::class, 'storePhoto']);
     Route::delete('/members/{member}/photo', [MemberDocumentController::class, 'destroyPhoto']);
     Route::post('/members/{member}/documents', [MemberDocumentController::class, 'storeDocument']);
     Route::delete('/members/{member}/documents/{document}', [MemberDocumentController::class, 'destroyDocument']);
+    Route::get('/members/{member}/loan-eligibility', [MemberController::class, 'loanEligibility']);
+
+    // Member Import
+    Route::middleware('permission:members.review')->get('/member-imports/pending-review', [MemberImportController::class, 'pendingReview']);
+    Route::middleware('permission:member_import.view')->group(function () {
+        Route::get('/member-imports', [MemberImportController::class, 'index']);
+        Route::get('/member-imports/{batch:token}', [MemberImportController::class, 'show']);
+        Route::get('/member-imports/{batch:token}/report', [MemberImportController::class, 'downloadReport']);
+    });
+    Route::middleware('permission:member_import.create')->group(function () {
+        Route::post('/member-imports', [MemberImportController::class, 'upload']);
+        Route::post('/member-imports/{batch:token}/select-sheet', [MemberImportController::class, 'selectSheet']);
+        Route::post('/member-imports/{batch:token}/preview', [MemberImportController::class, 'preview']);
+        Route::post('/member-imports/{batch:token}/commit', [MemberImportController::class, 'commit']);
+    });
+    Route::middleware('permission:member_import.resolve_duplicates')->post('/member-imports/{batch:token}/resolve-duplicates', [MemberImportController::class, 'resolveDuplicates']);
+    Route::middleware('permission:member_import.manage_offices')->post('/member-imports/{batch:token}/resolve-office', [MemberImportController::class, 'resolveOffice']);
 
     // Loan Types
     Route::get('/loan-types', [LoanTypeController::class, 'index']);
     Route::post('/loan-types', [LoanTypeController::class, 'store']);
     Route::put('/loan-types/{loanType}', [LoanTypeController::class, 'update']);
     Route::delete('/loan-types/{loanType}', [LoanTypeController::class, 'destroy']);
+
+    // Loan Settings (minimum membership duration + Reloan Policy)
+    Route::get('/loan-settings', [LoanSettingsController::class, 'show']);
+    Route::put('/loan-settings', [LoanSettingsController::class, 'update']);
 
     // Benefit Types
     Route::get('/benefit-types', [BenefitTypeController::class, 'index']);
@@ -71,14 +122,55 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/contributions/{contribution}', [ContributionController::class, 'update']);
     Route::post('/contributions/{contribution}/void', [ContributionController::class, 'void']);
 
+    // Deduction Types
+    Route::get('/deduction-types', [DeductionTypeController::class, 'index']);
+    Route::post('/deduction-types', [DeductionTypeController::class, 'store']);
+    Route::put('/deduction-types/{deductionType}', [DeductionTypeController::class, 'update']);
+    Route::patch('/deduction-types/{deductionType}/toggle-status', [DeductionTypeController::class, 'toggleStatus']);
+
+    // Deductions
+    Route::middleware('permission:deductions.view')->group(function () {
+        Route::get('/deductions', [DeductionController::class, 'index']);
+        Route::get('/deductions/all', [DeductionController::class, 'all']);
+    });
+    Route::middleware('permission:deductions.void')->post('/deductions/{deduction}/void', [DeductionController::class, 'void']);
+
+    // Payroll Import
+    Route::middleware('permission:payroll.history.view')->group(function () {
+        Route::get('/payroll-imports', [PayrollImportController::class, 'index']);
+        Route::get('/payroll-imports/{batch:token}', [PayrollImportController::class, 'show']);
+        Route::get('/payroll-imports/{batch:token}/report', [PayrollImportController::class, 'downloadReport']);
+    });
+    Route::middleware('permission:payroll.import.view')->group(function () {
+        Route::post('/payroll-imports', [PayrollImportController::class, 'upload']);
+        Route::post('/payroll-imports/{batch:token}/select-sheet', [PayrollImportController::class, 'selectSheet']);
+        Route::post('/payroll-imports/{batch:token}/preview', [PayrollImportController::class, 'preview']);
+        Route::post('/payroll-imports/{batch:token}/commit', [PayrollImportController::class, 'commit']);
+    });
+    Route::middleware('permission:payroll.import.rollback')->post('/payroll-imports/{batch:token}/rollback', [PayrollImportController::class, 'rollback']);
+
+    Route::middleware('permission:payroll.manual.view')->group(function () {
+        Route::get('/payroll-deductions/manual/reference', [ManualPayrollDeductionController::class, 'reference']);
+        Route::get('/payroll-deductions/manual/members/{member}', [ManualPayrollDeductionController::class, 'member']);
+    });
+    Route::middleware('permission:payroll.manual.create')->post('/payroll-deductions/manual', [ManualPayrollDeductionController::class, 'store']);
+    Route::middleware('permission:payroll.manual.post')->post('/payroll-deductions/manual/{payrollDeduction}/post', [ManualPayrollDeductionController::class, 'post']);
+
     // Loans
     Route::get('/loans/all', [LoanController::class, 'all']);
     Route::get('/loans', [LoanController::class, 'index']);
     Route::post('/loans', [LoanController::class, 'store']);
     Route::get('/loans/{loan}', [LoanController::class, 'show']);
     Route::put('/loans/{loan}', [LoanController::class, 'update']);
+    Route::delete('/loans/{loan}', [LoanController::class, 'destroy']);
     Route::get('/loans/{loan}/schedule', [LoanController::class, 'schedule']);
-    Route::get('/loans/{loan}/approval-history', [LoanController::class, 'approvalHistory']);
+    Route::post('/loans/{loan}/review', [LoanController::class, 'review']);
+    Route::post('/loans/{loan}/approve', [LoanController::class, 'approve']);
+    Route::post('/loans/{loan}/reject', [LoanController::class, 'reject']);
+    Route::post('/loans/{loan}/return', [LoanController::class, 'returnForRevision']);
+    Route::post('/loans/{loan}/release', [LoanController::class, 'release']);
+    Route::get('/loans/{loan}/reloan-eligibility', [ReloanController::class, 'eligibility']);
+    Route::post('/loans/{loan}/reloan', [ReloanController::class, 'createDraft']);
 
     // Loan Payments
     Route::get('/loan-payments/all', [LoanPaymentController::class, 'all']);
@@ -91,6 +183,63 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/benefits', [BenefitApplicationController::class, 'store']);
     Route::get('/benefits/{benefit}', [BenefitApplicationController::class, 'show']);
     Route::put('/benefits/{benefit}', [BenefitApplicationController::class, 'update']);
+    Route::delete('/benefits/{benefit}', [BenefitApplicationController::class, 'destroy']);
+    Route::post('/benefits/{benefit}/review', [BenefitApplicationController::class, 'review']);
+    Route::post('/benefits/{benefit}/approve', [BenefitApplicationController::class, 'approve']);
+    Route::post('/benefits/{benefit}/reject', [BenefitApplicationController::class, 'reject']);
+    Route::post('/benefits/{benefit}/return', [BenefitApplicationController::class, 'returnForRevision']);
+    Route::post('/benefits/{benefit}/release', [BenefitApplicationController::class, 'release']);
+
+    // Approval Workflow — generic engine
+    Route::get('/my-approvals', [ApprovalController::class, 'index']);
+    Route::get('/approvals/{subjectType}/{subjectId}/history', [ApprovalController::class, 'history']);
+    Route::post('/approvals/{subjectType}/{subjectId}/act', [ApprovalController::class, 'act']);
+
+    // Approval Workflow — admin configuration
+    Route::middleware('permission:approval_workflow.view')->group(function () {
+        Route::get('/admin/workflow-definitions', [WorkflowDefinitionController::class, 'index']);
+        Route::get('/admin/workflow-definitions/{workflowDefinition}', [WorkflowDefinitionController::class, 'show']);
+    });
+    Route::middleware('permission:approval_workflow.configure')->group(function () {
+        Route::put('/admin/workflow-definitions/{workflowDefinition}', [WorkflowDefinitionController::class, 'update']);
+        Route::put('/admin/workflow-definitions/{workflowDefinition}/stages', [WorkflowDefinitionController::class, 'updateStages']);
+    });
+
+    Route::get('/settings/membership-approval', [MembershipApprovalSettingController::class, 'show']);
+    Route::put('/settings/membership-approval', [MembershipApprovalSettingController::class, 'update']);
+
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+
+    // Audit Logs
+    Route::middleware('permission:audit_logs.view')->get('/admin/audit-logs', [AuditLogController::class, 'index']);
+    Route::middleware('permission:audit_logs.export')->get('/admin/audit-logs/export', [AuditLogController::class, 'export']);
+
+    // Roles — /all is also used by the Approval Workflow admin's approver-by-role picker
+    Route::get('/roles/all', [RoleController::class, 'all']);
+    Route::get('/roles', [RoleController::class, 'index']);
+    Route::post('/roles', [RoleController::class, 'store']);
+    Route::get('/roles/{role}', [RoleController::class, 'show']);
+    Route::put('/roles/{role}', [RoleController::class, 'update']);
+    Route::put('/roles/{role}/permissions', [RoleController::class, 'updatePermissions']);
+    Route::post('/roles/{role}/duplicate', [RoleController::class, 'duplicate']);
+    Route::patch('/roles/{role}/toggle-status', [RoleController::class, 'toggleStatus']);
+    Route::delete('/roles/{role}', [RoleController::class, 'destroy']);
+
+    // Users — /all is also used by the Approval Workflow admin's approver-by-user picker
+    Route::get('/users/all', [UserController::class, 'all']);
+    Route::post('/users/me/avatar', [UserController::class, 'updateMyAvatar']);
+    Route::delete('/users/me/avatar', [UserController::class, 'removeMyAvatar']);
+    Route::get('/users', [UserController::class, 'index']);
+    Route::post('/users', [UserController::class, 'store']);
+    Route::get('/users/{user}', [UserController::class, 'show']);
+    Route::put('/users/{user}', [UserController::class, 'update']);
+    Route::put('/users/{user}/permissions', [UserController::class, 'updatePermissions']);
+    Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
+    Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword']);
+    Route::get('/users/{user}/login-history', [UserController::class, 'loginHistory']);
 
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);

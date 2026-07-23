@@ -39,6 +39,7 @@ class MemberResource extends JsonResource
             'membershipType' => $this->membership_type,
             'membershipDate' => $this->membership_date?->toDateString(),
             'membershipStatus' => $this->membership_status,
+            'netPay' => $this->net_pay === null ? null : (float) $this->net_pay,
             'retireeStatus' => $this->retiree_status,
             'remarks' => $this->remarks,
 
@@ -49,10 +50,22 @@ class MemberResource extends JsonResource
             'archivedAt' => $this->archived_at?->toIso8601String(),
             'archivedReason' => $this->archived_reason,
 
+            'importedFromBatchId' => $this->imported_from_batch_id ? (string) $this->imported_from_batch_id : null,
+
             'isDraft' => $this->is_draft,
             'draftReferenceNo' => $this->draft_reference_no,
             'draftCompletionPercentage' => $this->draft_completion_percentage,
             'draftCurrentStep' => $this->draft_current_step,
+
+            // Registration approval progress lives on approval_instances, not
+            // membership_status (an independent, encoder-owned field) — see
+            // ApprovalWorkflowService's per-subject notes.
+            'approvalStatus' => $this->whenLoaded('approvalInstance', fn () => $this->approvalInstance?->status),
+            'registrationStatus' => $this->registration_status,
+            'approvalSource' => $this->approval_source,
+            'submittedAt' => $this->submitted_at?->toIso8601String(),
+            'approvedAt' => $this->approved_at?->toIso8601String(),
+            'approvedByUserId' => $this->approved_by_user_id ? (string) $this->approved_by_user_id : null,
 
             'createdAt' => $this->created_at?->toIso8601String(),
             'updatedAt' => $this->updated_at?->toIso8601String(),

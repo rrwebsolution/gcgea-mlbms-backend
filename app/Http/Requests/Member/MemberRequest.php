@@ -36,6 +36,7 @@ class MemberRequest extends FormRequest
      */
     public function rules(): array
     {
+        // Null on create (no {member} route param yet), the existing Member on update.
         $memberId = $this->route('member')?->id;
         $phRegex = '/^09\d{9}$/';
         $asDraft = $this->boolean('asDraft');
@@ -56,17 +57,28 @@ class MemberRequest extends FormRequest
             'civilStatus' => [$req, Rule::in(['Single', 'Married', 'Widowed', 'Separated', 'Divorced'])],
             'permanentAddress' => [$req, 'string'],
             'cellphoneNumber' => [$asDraft ? 'nullable' : 'required', 'string', 'regex:'.$phRegex],
-            'email' => ['nullable', 'email', Rule::unique('members', 'email')->ignore($memberId)],
+            // Enforced only when adding a new member. Skipped on update — a lot
+            // of existing members already legitimately share an email (import
+            // data, household members), so re-saving an already-duplicated
+            // email on an edit must not fail; only a brand-new duplicate should.
+            'email' => $memberId
+                ? ['nullable', 'email']
+                : ['nullable', 'email', Rule::unique('members', 'email')],
             'nameOfSpouse' => ['nullable', 'string', 'max:255'],
 
             'officeId' => [$req, 'exists:offices,id'],
             'position' => [$req, 'string', 'max:255'],
             'dateOfRegularAppointment' => [$req, 'date'],
-            'employmentStatus' => [$req, Rule::in(['Permanent', 'Casual', 'Job Order', 'Contractual', 'Co-terminus'])],
+            'employmentStatus' => [$req, 'exists:employment_statuses,name'],
 
             'membershipType' => [$req, Rule::in(['Regular', 'Associate', 'Honorary'])],
             'membershipDate' => [$req, 'date'],
-            'membershipStatus' => [$req, Rule::in(['Active', 'Inactive', 'Suspended', 'Terminated', 'Deceased'])],
+            // "Pending" is set only by the member-import pipeline (never by
+            // this request, which the import bypasses entirely) and flipped
+            // to "Active" on approval — kept in the shared vocabulary so the
+            // manual edit form doesn't reject an already-imported member.
+            'membershipStatus' => [$req, Rule::in(['Pending', 'Active', 'Inactive', 'Suspended', 'Terminated', 'Deceased'])],
+            'netPay' => ['nullable', 'numeric', 'min:0'],
             'retireeStatus' => [$req, Rule::in(['Not Retired', 'Retired'])],
             'remarks' => ['nullable', 'string'],
 

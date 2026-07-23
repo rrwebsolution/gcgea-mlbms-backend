@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Member\MemberRequest;
 use App\Http\Resources\MemberResource;
 use App\Models\Member;
+use App\Services\ApprovalWorkflowService;
+use App\Services\LoanEligibilityService;
+use App\Services\MembershipApprovalService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -12,9 +15,43 @@ use Illuminate\Support\Facades\DB;
 
 class MemberController extends Controller
 {
+    public function __construct(
+        private readonly ApprovalWorkflowService $workflow,
+        private readonly MembershipApprovalService $membershipApproval,
+    ) {}
+
+    /**
+     * Membership-duration-only eligibility snapshot for the Create Loan
+     * Application member selector (no loan type is known yet, so this omits
+     * amount/term/contribution-count checks — those run once a loan type is
+     * picked, via LoanEligibilityService::evaluate()).
+     */
+    public function loanEligibility(Request $request, Member $member, LoanEligibilityService $eligibilityService)
+    {
+        if (! $request->user()->hasPermission('loans.view')) {
+            abort(403, "You don't have permission to perform this action.");
+        }
+
+        $registration = $eligibilityService->registrationApprovedCheck($member);
+        $status = $eligibilityService->activeStatusCheck($member);
+        $duration = $eligibilityService->membershipDurationCheck($member);
+        $dues = $eligibilityService->contributionStandingCheck($member, 'Monthly Dues');
+        $pabaon = $eligibilityService->contributionStandingCheck($member, 'Cash Pabaon');
+
+        $eligible = $registration['passed'] && $status['passed'] && $duration['passed'];
+
+        return response()->json([
+            'eligible' => $eligible,
+            'completedMonths' => $duration['completed_months'],
+            'requiredMonths' => $duration['required_months'],
+            'eligibleOn' => $duration['eligible_on'],
+            'checks' => [$registration, $status, $duration, $dues, $pabaon],
+        ]);
+    }
+
     public function index(Request $request)
     {
-        $query = Member::with(['office', 'beneficiaries', 'documents'])
+        $query = Member::with(['office', 'beneficiaries', 'documents', 'approvalInstance'])
             ->where('is_archived', false)
             ->where('is_draft', $request->boolean('draftsOnly'));
 
@@ -46,7 +83,7 @@ class MemberController extends Controller
     {
         // Sync member picklists (bulk contribution entry, etc.) — active, non-archived, non-draft only.
         return MemberResource::collection(
-            Member::with(['office', 'beneficiaries', 'documents'])
+            Member::with(['office', 'beneficiaries', 'documents', 'approvalInstance'])
                 ->where('is_archived', false)
                 ->where('is_draft', false)
                 ->where('membership_status', 'Active')
@@ -61,7 +98,7 @@ class MemberController extends Controller
             abort(403, "You don't have permission to perform this action.");
         }
 
-        return new MemberResource($member->load(['office', 'beneficiaries', 'documents']));
+        return new MemberResource($member->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
     }
 
     public function store(MemberRequest $request)
@@ -81,6 +118,7 @@ class MemberController extends Controller
                 'is_draft' => $asDraft,
                 'draft_current_step' => $request->integer('draftCurrentStep', 1),
                 'created_by' => $request->user()->full_name,
+                'submitted_by_user_id' => $request->user()->id,
             ]);
 
             if ($asDraft) {
@@ -92,10 +130,14 @@ class MemberController extends Controller
             $this->syncBeneficiaries($member, $request->input('beneficiaries', []));
             $member->update(['draft_completion_percentage' => $asDraft ? $member->fresh('beneficiaries')->draftCompletionPercentage() : null]);
 
+            if (! $asDraft) {
+                $this->membershipApproval->process($member, $request->user(), 'manual');
+            }
+
             return $member;
         });
 
-        return new MemberResource($member->load(['office', 'beneficiaries', 'documents']));
+        return new MemberResource($member->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
     }
 
     public function update(MemberRequest $request, Member $member)
@@ -110,6 +152,15 @@ class MemberController extends Controller
         }
 
         DB::transaction(function () use ($request, $member, $asDraft) {
+            // Only a genuine draft->submitted transition should (re)start the
+            // approval workflow — a plain edit of an already-finalized member
+            // (the common case: asDraft is absent/false on every ordinary
+            // profile save) must never reset an existing approval back to
+            // pending. First-time draft submissions normally go through the
+            // dedicated submit() endpoint below, not this one, but this guard
+            // keeps update() correct on its own terms regardless of caller.
+            $wasDraft = $member->is_draft;
+
             $member->update([
                 ...$this->mapToColumns($request->validated()),
                 'is_draft' => $asDraft,
@@ -120,9 +171,28 @@ class MemberController extends Controller
                 'draft_completion_percentage' => $asDraft ? $member->fresh('beneficiaries')->draftCompletionPercentage() : null,
                 'draft_reference_no' => $asDraft ? ($member->draft_reference_no ?? 'GCGEA-MEM-DRAFT-'.now()->year.'-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT)) : null,
             ]);
+
+            if ($wasDraft && ! $asDraft) {
+                $this->membershipApproval->process($member, $request->user(), 'manual');
+            }
         });
 
-        return new MemberResource($member->load(['office', 'beneficiaries', 'documents']));
+        return new MemberResource($member->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
+    }
+
+    public function updateMembershipStatus(Request $request, Member $member)
+    {
+        if (! $request->user()->hasPermission('members.update')) {
+            abort(403, "You don't have permission to perform this action.");
+        }
+
+        $validated = $request->validate([
+            'membershipStatus' => ['required', 'in:Active,Inactive'],
+        ]);
+
+        $member->update(['membership_status' => $validated['membershipStatus']]);
+
+        return new MemberResource($member->fresh()->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
     }
 
     /**
@@ -154,9 +224,38 @@ class MemberController extends Controller
             }
 
             $this->syncBeneficiaries($member, $request->input('beneficiaries', []));
+
+            $member->update(['submitted_by_user_id' => $request->user()->id]);
+            $this->membershipApproval->process($member, $request->user(), 'manual');
         });
 
-        return new MemberResource($member->load(['office', 'beneficiaries', 'documents']));
+        return new MemberResource($member->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
+    }
+
+    public function approve(Request $request, Member $member)
+    {
+        $this->authorize('act', [$member, 'approve']);
+        $this->membershipApproval->assertMayApproveOwn($member, $request->user());
+
+        // Imported members start life with membership_status='Pending'
+        // (never touched by the workflow engine by default, since that
+        // field is otherwise encoder-owned) — approval is what actually
+        // activates them. Manual registrations don't carry an imported
+        // batch id, so their approve behavior is unchanged.
+        $extra = $this->membershipApproval->markApproved($member, $request->user());
+
+        $this->workflow->act($member, $request->user(), 'approve', $extra, $request->input('remarks'));
+
+        return new MemberResource($member->fresh()->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
+    }
+
+    public function reject(Request $request, Member $member)
+    {
+        $request->validate(['remarks' => ['required', 'string']]);
+        $this->authorize('act', [$member, 'reject']);
+        $this->workflow->act($member, $request->user(), 'reject', remarks: $request->string('remarks')->toString());
+
+        return new MemberResource($member->fresh()->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
     }
 
     public function archive(Request $request, Member $member)
@@ -257,6 +356,7 @@ class MemberController extends Controller
             'membership_type' => $validated['membershipType'] ?? null,
             'membership_date' => $validated['membershipDate'] ?? null,
             'membership_status' => $validated['membershipStatus'] ?? null,
+            'net_pay' => $validated['netPay'] ?? null,
             'retiree_status' => $validated['retireeStatus'] ?? null,
             'remarks' => $validated['remarks'] ?? null,
         ];

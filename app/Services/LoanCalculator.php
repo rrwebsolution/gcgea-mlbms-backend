@@ -14,7 +14,7 @@ use Carbon\Carbon;
 class LoanCalculator
 {
     /**
-     * @return array{principal: float, totalInterest: float, processingFee: float, netProceeds: float, totalAmountPayable: float, monthlyAmortization: float, maturityDate: string, schedule: array<int, array<string, mixed>>}
+     * @return array{principal: float, totalInterest: float, processingFee: float, serviceCharge: float, netProceeds: float, totalAmountPayable: float, monthlyAmortization: float, maturityDate: string, schedule: array<int, array<string, mixed>>}
      */
     public function compute(
         float $principal,
@@ -23,7 +23,12 @@ class LoanCalculator
         float $processingFee,
         string $interestMethod,
         Carbon $firstDueDate,
+        // 1%-of-gross service charge (Resolution No. 24-2026, Table 3) — additive
+        // to the existing flat processingFee, not a replacement for it. Null for
+        // every loan type except Solidarity Cash Assistance today.
+        ?float $serviceChargePercent = null,
     ): array {
+        $serviceCharge = $serviceChargePercent ? round($principal * $serviceChargePercent / 100, 2) : 0.0;
         $monthlyRate = $annualRatePercent / 100;
         $totalInterest = 0.0;
         $schedule = [];
@@ -102,7 +107,7 @@ class LoanCalculator
             $totalInterest = round($totalInterest, 2);
         }
 
-        $netProceeds = round($principal - $processingFee, 2);
+        $netProceeds = round($principal - $processingFee - $serviceCharge, 2);
         $totalAmountPayable = round($principal + $totalInterest, 2);
         $monthlyAmortization = $schedule[0]['amount_due'] ?? 0;
         $maturityDate = $schedule !== [] ? $schedule[count($schedule) - 1]['due_date'] : $firstDueDate->toDateString();
@@ -111,6 +116,7 @@ class LoanCalculator
             'principal' => $principal,
             'totalInterest' => $totalInterest,
             'processingFee' => $processingFee,
+            'serviceCharge' => $serviceCharge,
             'netProceeds' => $netProceeds,
             'totalAmountPayable' => $totalAmountPayable,
             'monthlyAmortization' => $monthlyAmortization,

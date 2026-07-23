@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class BenefitApplication extends Model
 {
@@ -48,5 +50,15 @@ class BenefitApplication extends Model
     public function benefitType(): BelongsTo
     {
         return $this->belongsTo(BenefitType::class);
+    }
+
+    public function approvalInstance(): MorphOne
+    {
+        return $this->morphOne(ApprovalInstance::class, 'subject');
+    }
+
+    public function approvalActions(): MorphMany
+    {
+        return $this->morphMany(ApprovalAction::class, 'subject')->orderBy('acted_at');
     }
 }

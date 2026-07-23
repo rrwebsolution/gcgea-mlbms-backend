@@ -19,6 +19,7 @@ class ContributionRequest extends FormRequest
     {
         $rules = [
             'contributionPeriod' => ['required', 'string'],
+            'contributionType' => ['nullable', Rule::in(['Monthly Dues', 'Cash Pabaon', 'Savings'])],
             'amount' => ['required', 'numeric', 'gt:0'],
             'paymentDate' => ['required', 'date'],
             'paymentMethod' => ['required', Rule::in(['Payroll Deduction', 'Cash', 'Bank Transfer', 'Check'])],

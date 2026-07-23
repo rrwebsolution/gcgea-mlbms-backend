@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Contribution\ContributionRequest;
 use App\Http\Resources\ContributionResource;
 use App\Models\Contribution;
+use App\Models\Deduction;
+use App\Models\DeductionType;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ContributionController extends Controller
 {
@@ -53,6 +56,7 @@ class ContributionController extends Controller
 
         $exists = Contribution::where('member_id', $request->input('memberId'))
             ->where('contribution_period', $request->string('period')->toString())
+            ->where('contribution_type', $request->input('contributionType', 'Monthly Dues'))
             ->where('status', 'Posted')
             ->exists();
 
@@ -69,6 +73,7 @@ class ContributionController extends Controller
             $contribution = Contribution::create([
                 'member_id' => $request->input('memberId'),
                 'contribution_period' => $request->input('contributionPeriod'),
+                'contribution_type' => $request->input('contributionType', 'Monthly Dues'),
                 'amount' => $request->input('amount'),
                 'payment_date' => $request->input('paymentDate'),
                 'payment_method' => $request->input('paymentMethod'),
@@ -94,6 +99,7 @@ class ContributionController extends Controller
 
         $contribution->update([
             'contribution_period' => $request->input('contributionPeriod', $contribution->contribution_period),
+            'contribution_type' => $request->input('contributionType', $contribution->contribution_type),
             'amount' => $request->input('amount', $contribution->amount),
             'payment_date' => $request->input('paymentDate', $contribution->payment_date),
             'payment_method' => $request->input('paymentMethod', $contribution->payment_method),
@@ -135,6 +141,7 @@ class ContributionController extends Controller
 
         $data = $request->validate([
             'contributionPeriod' => ['required', 'string'],
+            'contributionType' => ['nullable', Rule::in(['Monthly Dues', 'Cash Pabaon', 'Savings'])],
             'paymentDate' => ['required', 'date'],
             'paymentMethod' => ['required', 'string'],
             'payrollReference' => ['nullable', 'string'],
@@ -147,9 +154,57 @@ class ContributionController extends Controller
 
         $canReplace = $request->boolean('replaceDuplicates') && $request->user()->hasPermission('contributions.replace_duplicate');
         $encodedBy = $request->user()->full_name;
-        $result = ['saved' => 0, 'skippedDuplicates' => 0, 'replaced' => 0, 'failed' => 0];
+        // Bulk Contribution Entry is intentionally Monthly Dues-only. Cash
+        // Pabaon is posted separately to the deductions ledger.
+        $contributionType = 'Monthly Dues';
+        $pabaonType = $data['paymentMethod'] === 'Payroll Deduction'
+            ? DeductionType::query()->where('code', 'pabaon')->where('is_active', true)->first()
+            : null;
+        $result = [
+            'saved' => 0,
+            'skippedDuplicates' => 0,
+            'replaced' => 0,
+            'failed' => 0,
+            'cashPabaonSaved' => 0,
+            'cashPabaonSkipped' => 0,
+        ];
 
-        DB::transaction(function () use ($data, $canReplace, $encodedBy, &$result) {
+        DB::transaction(function () use ($data, $canReplace, $encodedBy, $contributionType, $pabaonType, &$result) {
+            $postCashPabaon = function (string $memberId) use ($data, $encodedBy, $pabaonType, &$result): void {
+                if (! $pabaonType || (float) $pabaonType->default_amount <= 0) {
+                    return;
+                }
+
+                $existingDeduction = Deduction::query()
+                    ->where('member_id', $memberId)
+                    ->where('deduction_type_id', $pabaonType->id)
+                    ->where('period', $data['contributionPeriod'])
+                    ->where('status', 'Posted')
+                    ->exists();
+
+                if ($existingDeduction) {
+                    $result['cashPabaonSkipped']++;
+
+                    return;
+                }
+
+                $deduction = Deduction::create([
+                    'member_id' => $memberId,
+                    'deduction_type_id' => $pabaonType->id,
+                    'period' => $data['contributionPeriod'],
+                    'amount' => $pabaonType->default_amount,
+                    'payment_date' => $data['paymentDate'],
+                    'payroll_reference' => $data['payrollReference'] ?? null,
+                    'remarks' => 'Automatically posted with bulk Monthly Dues.',
+                    'encoded_by' => $encodedBy,
+                    'status' => 'Posted',
+                ]);
+                $deduction->update([
+                    'reference_number' => 'GCGEA-DED-'.now()->year.'-'.str_pad((string) $deduction->id, 6, '0', STR_PAD_LEFT),
+                ]);
+                $result['cashPabaonSaved']++;
+            };
+
             foreach ($data['rows'] as $row) {
                 if ($row['amount'] <= 0) {
                     $result['failed']++;
@@ -159,6 +214,7 @@ class ContributionController extends Controller
 
                 $existing = Contribution::where('member_id', $row['memberId'])
                     ->where('contribution_period', $data['contributionPeriod'])
+                    ->where('contribution_type', $contributionType)
                     ->where('status', 'Posted')
                     ->first();
 
@@ -170,6 +226,7 @@ class ContributionController extends Controller
                         'payroll_reference' => $data['payrollReference'] ?? null,
                     ]);
                     $result['replaced']++;
+                    $postCashPabaon((string) $row['memberId']);
 
                     continue;
                 }
@@ -183,6 +240,7 @@ class ContributionController extends Controller
                 $contribution = Contribution::create([
                     'member_id' => $row['memberId'],
                     'contribution_period' => $data['contributionPeriod'],
+                    'contribution_type' => $contributionType,
                     'amount' => $row['amount'],
                     'payment_date' => $data['paymentDate'],
                     'payment_method' => $data['paymentMethod'],
@@ -192,6 +250,7 @@ class ContributionController extends Controller
                 ]);
                 $contribution->update(['reference_number' => 'GCGEA-CON-'.now()->year.'-'.str_pad((string) $contribution->id, 6, '0', STR_PAD_LEFT)]);
                 $result['saved']++;
+                $postCashPabaon((string) $row['memberId']);
             }
         });
 
@@ -210,6 +269,9 @@ class ContributionController extends Controller
         }
         if ($period = $request->string('period')->toString()) {
             $query->where('contribution_period', $period);
+        }
+        if ($type = $request->string('contributionType')->toString()) {
+            $query->where('contribution_type', $type);
         }
         if ($office = $request->string('office')->toString()) {
             $query->whereHas('member.office', fn ($q) => $q->where('name', $office));

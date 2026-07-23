@@ -36,6 +36,7 @@ class LoanRequest extends FormRequest
     {
         $asDraft = $this->boolean('asDraft');
         $req = $asDraft ? 'nullable' : 'required';
+        $reloanReq = ($asDraft || $this->route('loan')?->application_type !== 'reloan') ? 'nullable' : 'required';
 
         return [
             'asDraft' => ['boolean'],
@@ -49,6 +50,11 @@ class LoanRequest extends FormRequest
             'requirements.*.label' => ['required_with:requirements', 'string'],
             'requirements.*.completed' => ['boolean'],
             'draftCurrentStep' => ['nullable', 'integer', 'min:1'],
+            'currentNetTakeHomePay' => [$reloanReq, 'numeric', 'gt:0'],
+            'eligibilityOverridden' => ['boolean'],
+            'eligibilityOverrideReason' => ['nullable', 'string'],
+            'boardResolutionReference' => ['nullable', 'string'],
+            'boardResolutionDocumentPath' => ['nullable', 'string'],
         ];
     }
 }

@@ -12,6 +12,11 @@ class LoanResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $outstandingBalance = max(
+            0,
+            round((float) $this->principal_balance + (float) $this->interest_balance, 2)
+        );
+
         return [
             'id' => (string) $this->id,
             'applicationNumber' => $this->application_number,
@@ -37,15 +42,26 @@ class LoanResource extends JsonResource
             'netProceeds' => (float) $this->net_proceeds,
             'totalAmountPayable' => (float) $this->total_amount_payable,
             'monthlyAmortization' => (float) $this->monthly_amortization,
-            'outstandingBalance' => (float) $this->outstanding_balance,
+            'outstandingBalance' => $outstandingBalance,
 
             'status' => $this->status,
             'draftCurrentStep' => $this->draft_current_step,
             'assignedOfficer' => $this->assigned_officer,
 
+            'applicationType' => $this->application_type,
+            'previousLoanId' => $this->previous_loan_id !== null ? (string) $this->previous_loan_id : null,
+            'previousLoanReference' => $this->previousLoan?->application_number,
+            'rootLoanId' => $this->root_loan_id !== null ? (string) $this->root_loan_id : null,
+            'reloanSequence' => $this->reloan_sequence,
+            'currentNetTakeHomePay' => $this->current_net_take_home_pay !== null ? (float) $this->current_net_take_home_pay : null,
+
             'eligibility' => $this->eligibility ?? [],
             'eligibilityOverridden' => $this->eligibility_overridden,
             'eligibilityOverrideReason' => $this->eligibility_override_reason,
+            'reloanPolicySnapshot' => $this->reloan_policy_snapshot,
+            'previousObligationAmount' => $this->previous_obligation_amount !== null ? (float) $this->previous_obligation_amount : null,
+            'previousObligationSettlementMethod' => $this->previous_obligation_settlement_method,
+            'previousObligationSettledAt' => $this->previous_obligation_settled_at?->toIso8601String(),
             'requirements' => $this->requirements ?? [],
 
             'releaseDate' => $this->release_date?->toDateString(),
