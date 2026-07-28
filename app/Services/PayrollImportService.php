@@ -34,23 +34,33 @@ class PayrollImportService
         private readonly PayrollColumnMapper $mapper,
         private readonly LoanPaymentPoster $poster,
         private readonly AuditLogService $auditLog,
+        private readonly OfficeResolutionService $officeResolver,
     ) {}
 
     /**
-     * @return array{headers: array<int,string>, detectedMapping: array<string,?string>, unmatchedHeaders: array<int,string>, sampleRows: array<int,array<string,mixed>>, totalRows: int, sheetNames: array<int,string>, selectedSheet: string}
+     * @return array{headers: array<int,array{column:string,label:string}>, detectedMapping: array<string,?string>, unmatchedHeaders: array<int,array{column:string,label:string}>, sampleRows: array<int,array<string,mixed>>, totalRows: int, sheetNames: array<int,string>, selectedSheet: string}
      */
-    public function detectColumns(string $absolutePath, ?string $sheetName = null): array
+    public function detectColumns(string $absolutePath, string $ext, ?string $sheetName = null): array
     {
-        $parsed = $this->parser->parse($absolutePath, $sheetName);
+        $parsed = $this->parser->parse($absolutePath, $ext, $sheetName);
         $detection = $this->mapper->detect($parsed['headers']);
 
         $sample = array_slice($parsed['dataRows'], 0, 5, true);
 
+        $columns = [];
+        foreach ($parsed['headers'] as $columnLetter => $label) {
+            $columns[] = ['column' => $columnLetter, 'label' => $label];
+        }
+        $unmatched = [];
+        foreach ($detection['unmatched'] as $columnLetter) {
+            $unmatched[] = ['column' => $columnLetter, 'label' => $parsed['headers'][$columnLetter] ?? $columnLetter];
+        }
+
         return [
-            'headers' => $parsed['headers'],
+            'headers' => $columns,
             'headerRowIndex' => $parsed['headerRowIndex'],
             'detectedMapping' => $detection['mapping'],
-            'unmatchedHeaders' => $detection['unmatched'],
+            'unmatchedHeaders' => $unmatched,
             'sampleRows' => array_values($sample),
             'totalRows' => count($parsed['dataRows']),
             'sheetNames' => $parsed['sheetNames'],
@@ -67,9 +77,9 @@ class PayrollImportService
      * @param  array<string,?string>  $mapping
      * @return array{rows: array<int,array<string,mixed>>, summary: array<string,int>, batchWarnings: array<int,string>}
      */
-    public function validate(string $absolutePath, array $mapping, PayrollImportBatch $batch, ?string $sheetName = null): array
+    public function validate(string $absolutePath, string $ext, array $mapping, PayrollImportBatch $batch, ?string $sheetName = null): array
     {
-        $parsed = $this->parser->parse($absolutePath, $sheetName);
+        $parsed = $this->parser->parse($absolutePath, $ext, $sheetName);
 
         $batchWarnings = [];
         $duplicateBatch = PayrollImportBatch::query()
@@ -289,7 +299,7 @@ class PayrollImportService
                             'encoded_by' => $user->full_name,
                             'status' => 'Posted',
                         ]);
-                        $contribution->update(['reference_number' => 'GCGEA-CON-'.now()->year.'-'.str_pad((string) $contribution->id, 6, '0', STR_PAD_LEFT)]);
+                        $contribution->update(['reference_number' => app(DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
                         $createdContributionId = (string) $contribution->id;
                         $summary['contributionsCreated']++;
                         $contributionsAmount += $monthlyDues;
@@ -442,16 +452,16 @@ class PayrollImportService
     }
 
     /**
-     * @param  array<string,mixed>  $rawRow  keyed by original spreadsheet header
-     * @param  array<string,?string>  $mapping  targetField => spreadsheet header
+     * @param  array<string,mixed>  $rawRow  keyed by spreadsheet column letter
+     * @param  array<string,?string>  $mapping  targetField => spreadsheet column letter
      * @return array<string,mixed> keyed by target field
      */
     private function mapRow(array $rawRow, array $mapping): array
     {
         $mapped = [];
         foreach (PayrollColumnMapper::TARGET_FIELDS as $field => $label) {
-            $header = $mapping[$field] ?? null;
-            $value = $header !== null ? ($rawRow[$header] ?? null) : null;
+            $columnLetter = $mapping[$field] ?? null;
+            $value = $columnLetter !== null ? ($rawRow[$columnLetter] ?? null) : null;
             $mapped[$field] = is_string($value) ? trim($value) : $value;
         }
 
@@ -513,6 +523,22 @@ class PayrollImportService
             }
             if ($member->is_draft === true && in_array($instance?->status, ['rejected', 'returned'], true)) {
                 $reasons[] = 'Rejected Registration';
+            }
+
+            // office_name is optional and never used to decide where the
+            // deduction actually posts (that's always the member's own
+            // office_id) — this is purely a sanity check surfaced as a
+            // warning so a payroll sheet grouped/sorted incorrectly doesn't
+            // silently post against the wrong office's expectations.
+            $officeName = trim((string) ($mapped['office_name'] ?? ''));
+            if ($officeName !== '') {
+                $resolvedOffice = $this->officeResolver->resolve($officeName);
+                if (! $resolvedOffice) {
+                    $warnings[] = "Unknown Office ('{$officeName}')";
+                } elseif ($resolvedOffice->id !== $member->office_id) {
+                    $memberOfficeName = $member->office?->name ?? 'no office on record';
+                    $warnings[] = "Office Mismatch — row says '{$officeName}' but the member's registered office is '{$memberOfficeName}'";
+                }
             }
 
             $hasLoanPayment = ($principal ?? 0) > 0 || ($interest ?? 0) > 0;

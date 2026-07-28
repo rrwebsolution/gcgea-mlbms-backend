@@ -55,25 +55,27 @@ class MemberColumnMapper
     public const DATE_FIELDS = ['birthdate', 'date_of_regular_appointment', 'membership_date'];
 
     private const ALIASES = [
+        // Legacy workbook metadata only. This never populates the Member
+        // model's system-managed submitted_at timestamp.
         'source_submitted_at' => ['timestamp'],
         'email' => ['emailaddress', 'email'],
-        'membership_type_raw' => ['checkone'],
+        'membership_type_raw' => ['membershiptype', 'checkone'],
         'last_name' => ['surname'],
         'first_name' => ['firstname'],
         'middle_name' => ['middlename'],
-        'office_name_raw' => ['nameofpresentoffice', 'presentoffice'],
+        'office_name_raw' => ['officename', 'nameofpresentoffice', 'presentoffice'],
         'position' => ['occupationposition', 'occupation', 'position'],
         'permanent_address' => ['permanentaddress'],
         'age_display' => ['age'],
         'date_of_regular_appointment' => ['dateofregularappointment'],
         'years_in_service_display' => ['noofyearsinthegovernmentservice', 'yearsingovernmentservice'],
-        'beneficiary_1' => ['1nameofdependentsandbeneficiaryies', '1nameofdependentandbeneficiary'],
-        'beneficiary_2' => ['2nameofdependentsandbeneficiaryies', '2nameofdependentandbeneficiary'],
+        'beneficiary_1' => ['beneficiary1fullname', 'beneficiary1', '1nameofdependentsandbeneficiaryies', '1nameofdependentandbeneficiary'],
+        'beneficiary_2' => ['beneficiary2fullname', 'beneficiary2', '2nameofdependentsandbeneficiaryies', '2nameofdependentandbeneficiary'],
         'cellphone_number' => ['cellphonenumber', 'cellphone', 'mobilenumber'],
         'name_of_spouse' => ['ifmarriednameofspouse', 'nameofspouse'],
         'membership_date' => ['dateasgcgeamember'],
         'length_of_membership_display' => ['lengthofmembership'],
-        'retiree_status_raw' => ['retirees', 'retiree'],
+        'retiree_status_raw' => ['retireestatus', 'retirees', 'retiree'],
         'cash_pabaon' => ['cashpabaon'],
         'loan_start' => ['loanstart'],
         'solidarity_assistance_loan' => ['solidarityassistanceloan'],

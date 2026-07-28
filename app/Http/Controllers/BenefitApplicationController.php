@@ -11,6 +11,7 @@ use App\Services\ApprovalWorkflowService;
 use App\Services\AuditLogService;
 use App\Services\BenefitEligibilityService;
 use App\Services\BenefitProrationService;
+use App\Services\DocumentNumberService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -87,6 +88,7 @@ class BenefitApplicationController extends Controller
         $this->authorize('act', [$benefit, 'release']);
         $this->workflow->act($benefit, $request->user(), 'release', [
             'release_date' => now(),
+            'release_reference_number' => app(DocumentNumberService::class)->generate('benefitRelease', $benefit->id),
         ], $request->input('remarks'));
 
         return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
@@ -116,7 +118,7 @@ class BenefitApplicationController extends Controller
                 'draft_current_step' => $request->integer('draftCurrentStep', 1),
                 'created_by' => $request->user()->full_name,
             ]);
-            $benefit->update(['application_number' => 'GCGEA-BEN-'.$computed['applicationDate']->year.'-'.str_pad((string) $benefit->id, 6, '0', STR_PAD_LEFT)]);
+            $benefit->update(['application_number' => app(DocumentNumberService::class)->generate('benefit', $benefit->id, $computed['applicationDate'])]);
 
             if ($asDraft) {
                 $this->workflow->recordDraftAction($benefit, $request->user(), 'draft_created');
@@ -217,7 +219,7 @@ class BenefitApplicationController extends Controller
         $eligibility = [];
         $eligibilityResult = null;
         if ($benefitType && $requestedAmount) {
-            $eligibility = $eligibilityService->evaluate($member, $benefitType, $requestedAmount);
+            $eligibility = $eligibilityService->evaluate($member, $benefitType, $requestedAmount, $request->input('beneficiaryOrRecipient'));
             $eligibilityResult = $eligibilityService->resultFor($eligibility);
         }
 

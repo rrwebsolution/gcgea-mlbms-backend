@@ -59,6 +59,8 @@ class RoleSeeder extends Seeder
             'payroll.bulk.view', 'payroll.bulk.create', 'payroll.bulk.edit', 'payroll.bulk.post',
             'payroll.import.view', 'payroll.import.rollback', 'payroll.history.view',
             'deduction_types.view', 'deductions.view', 'deductions.void',
+            'annual_budgets.view', 'annual_budgets.manage', 'annual_budgets.submit',
+            'disbursements.view', 'disbursements.manage', 'disbursements.submit', 'disbursements.pay', 'disbursements.void',
         ];
 
         $benefitsOfficer = [
@@ -79,18 +81,20 @@ class RoleSeeder extends Seeder
             'benefits.view', 'benefits.review', 'benefits.approve', 'benefits.reject',
             'benefits.print', 'benefits.export',
             'reports.view', 'reports.export', 'reports.print', 'reports.loan', 'reports.benefit',
+            'annual_budgets.view', 'annual_budgets.approve',
+            'disbursements.view', 'disbursements.approve',
         ];
 
-        $auditorViewer = array_values(array_unique([...$viewOnly, 'audit_logs.view', 'audit_logs.export', 'drafts.view_all']));
+        $auditorViewer = array_values(array_unique([...$viewOnly, 'audit_logs.view', 'audit_logs.export', 'drafts.view_all', 'annual_budgets.view', 'disbursements.view']));
 
         $roles = [
             ['id' => 1, 'name' => 'Super Administrator', 'code' => 'super_administrator', 'description' => 'Full, unrestricted access to all modules and settings.', 'is_system_role' => true, 'permissions' => $allCodes],
             ['id' => 2, 'name' => 'Membership Officer', 'code' => 'membership_officer', 'description' => 'Manages member registration, profiles, and beneficiaries.', 'is_system_role' => true, 'permissions' => $membershipOfficer],
             ['id' => 3, 'name' => 'Loan Officer', 'code' => 'loan_officer', 'description' => 'Encodes and processes loan applications and releases.', 'is_system_role' => true, 'permissions' => $loanOfficer],
-            ['id' => 4, 'name' => 'Treasurer', 'code' => 'treasurer', 'description' => 'Handles contributions, collections, and payment posting.', 'is_system_role' => true, 'permissions' => $treasurer],
+            ['id' => 4, 'name' => 'Treasurer', 'code' => 'treasurer', 'description' => 'Prepares annual budgets and disbursements, manages collections, and records approved payments.', 'is_system_role' => true, 'permissions' => $treasurer],
             ['id' => 5, 'name' => 'Benefits Officer', 'code' => 'benefits_officer', 'description' => 'Processes benefit applications and releases.', 'is_system_role' => true, 'permissions' => $benefitsOfficer],
-            ['id' => 6, 'name' => 'Approving Officer', 'code' => 'approving_officer', 'description' => 'Reviews and approves loans and benefit applications.', 'is_system_role' => true, 'permissions' => $approvingOfficer],
-            ['id' => 7, 'name' => 'Auditor / Viewer', 'code' => 'auditor_viewer', 'description' => 'Read-only access for audit and oversight purposes.', 'is_system_role' => true, 'permissions' => $auditorViewer],
+            ['id' => 6, 'name' => 'Approving Officer', 'code' => 'approving_officer', 'description' => 'Reviews and decides loan, benefit, annual budget, and disbursement submissions.', 'is_system_role' => true, 'permissions' => $approvingOfficer],
+            ['id' => 7, 'name' => 'Auditor / Viewer', 'code' => 'auditor_viewer', 'description' => 'Read-only access to operational and financial records for audit and oversight.', 'is_system_role' => true, 'permissions' => $auditorViewer],
             ['id' => 8, 'name' => 'Senior Loan Officer', 'code' => 'senior_loan_officer', 'description' => 'Loan Officer duties plus the ability to recommend applications for approval.', 'is_system_role' => false, 'permissions' => array_values(array_unique([...$loanOfficer, 'loans.review', 'loans.recommend']))],
             ['id' => 9, 'name' => 'Regional Auditor', 'code' => 'regional_auditor', 'description' => 'Extended read-only access including sensitive audit log changes, for external/regional audit engagements.', 'is_system_role' => false, 'permissions' => array_values(array_unique([...$auditorViewer, 'audit_logs.view_sensitive_changes', 'reports.audit']))],
             ['id' => 10, 'name' => 'Branch Coordinator', 'code' => 'branch_coordinator', 'description' => 'Front-desk coordinator role for satellite offices — light member and reporting access without financial actions.', 'is_system_role' => false, 'permissions' => [

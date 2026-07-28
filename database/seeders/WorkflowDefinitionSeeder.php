@@ -3,6 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\BenefitApplication;
+use App\Models\AnnualBudget;
+use App\Models\Disbursement;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\Role;
@@ -117,6 +119,38 @@ class WorkflowDefinitionSeeder extends Seeder
             'approver_user_id' => null,
             'approver_office_id' => null,
             'required_permission_code' => 'benefits.release',
+            'is_final' => true,
+        ]);
+
+        $annualBudget = WorkflowDefinition::updateOrCreate(
+            ['module_key' => 'annual_budget'],
+            ['label' => 'Annual Budget', 'subject_model' => AnnualBudget::class, 'is_enabled' => true]
+        );
+        $annualBudget->stages()->updateOrCreate(['sequence' => 1], [
+            'code' => 'approve',
+            'label' => 'Approving Officer / President Approval',
+            'stage_type' => 'approve',
+            'approver_type' => 'role',
+            'approver_role_id' => $approvingOfficer,
+            'approver_user_id' => null,
+            'approver_office_id' => null,
+            'required_permission_code' => 'annual_budgets.approve',
+            'is_final' => true,
+        ]);
+
+        $disbursement = WorkflowDefinition::updateOrCreate(
+            ['module_key' => 'disbursement'],
+            ['label' => 'Disbursement', 'subject_model' => Disbursement::class, 'is_enabled' => true]
+        );
+        $disbursement->stages()->updateOrCreate(['sequence' => 1], [
+            'code' => 'approve',
+            'label' => 'Approving Officer / President Approval',
+            'stage_type' => 'approve',
+            'approver_type' => 'role',
+            'approver_role_id' => $approvingOfficer,
+            'approver_user_id' => null,
+            'approver_office_id' => null,
+            'required_permission_code' => 'disbursements.approve',
             'is_final' => true,
         ]);
     }

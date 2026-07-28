@@ -12,6 +12,7 @@ class PayrollImportBatch extends Model
         'token',
         'original_filename',
         'storage_path',
+        'source_file_ext',
         'payroll_period',
         'payroll_reference',
         'column_mapping',

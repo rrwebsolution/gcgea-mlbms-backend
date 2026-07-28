@@ -284,7 +284,7 @@ class MemberImportService
                     'created_by' => $user->full_name,
                     'submitted_by_user_id' => $user->id,
                 ]);
-                $member->update(['member_number' => 'GCGEA-MEM-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT)]);
+                $member->update(['member_number' => app(DocumentNumberService::class)->generate('member', $member->id)]);
 
                 foreach ([1 => 'beneficiary_1', 2 => 'beneficiary_2'] as $priority => $key) {
                     if (! empty($data[$key])) {

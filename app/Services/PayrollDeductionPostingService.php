@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class PayrollDeductionPostingService
 {
-    public function __construct(private readonly LoanPaymentPoster $loanPaymentPoster, private readonly AuditLogService $auditLog) {}
+    public function __construct(private readonly LoanPaymentPoster $loanPaymentPoster, private readonly AuditLogService $auditLog, private readonly ContributionFundAllocator $fundAllocator) {}
 
     public function post(PayrollDeductionHeader $payroll, User $actor): PayrollDeductionHeader
     {
@@ -35,7 +35,8 @@ class PayrollDeductionPostingService
                     'payment_date' => $payroll->payroll_date, 'payment_method' => 'Payroll Deduction', 'payroll_reference' => $payroll->payroll_reference,
                     'remarks' => $payroll->remarks, 'encoded_by' => $actor->full_name, 'status' => 'Posted',
                 ]);
-                $contribution->update(['reference_number' => 'GCGEA-CON-'.now()->year.'-'.str_pad((string) $contribution->id, 6, '0', STR_PAD_LEFT)]);
+                $contribution->update(['reference_number' => app(DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
+                $this->fundAllocator->allocate($contribution, $actor);
                 $details['monthly_dues']->update(['contribution_id' => $contribution->id]);
                 $this->auditLog->record($actor, $payroll, 'contribution_created');
             }

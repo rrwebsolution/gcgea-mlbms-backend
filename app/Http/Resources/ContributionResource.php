@@ -29,6 +29,11 @@ class ContributionResource extends JsonResource
             'remarks' => $this->remarks,
             'encodedBy' => $this->encoded_by,
             'status' => $this->status,
+            'fundAllocations' => $this->whenLoaded('fundAllocations', fn () => $this->fundAllocations->map(fn ($allocation) => [
+                'fundId' => (string) $allocation->fund_id,
+                'fundName' => $allocation->fund_name_snapshot,
+                'allocatedAmount' => (float) $allocation->allocated_amount,
+            ])->values()),
             'voidReason' => $this->void_reason,
             'voidedBy' => $this->voided_by,
             'voidedAt' => $this->voided_at?->toIso8601String(),

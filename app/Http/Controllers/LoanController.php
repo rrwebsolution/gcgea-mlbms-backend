@@ -16,12 +16,14 @@ use App\Services\AuditLogService;
 use App\Services\LoanCalculator;
 use App\Services\LoanEligibilityService;
 use App\Services\LoanIncomeBracketService;
+use App\Services\DocumentNumberService;
 use App\Services\ReloanEligibilityService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class LoanController extends Controller
 {
@@ -148,7 +150,7 @@ class LoanController extends Controller
                 'requirements' => $request->input('requirements', []),
                 'created_by' => $request->user()->full_name,
             ]);
-            $loan->update(['application_number' => 'GCGEA-LN-'.$computed['applicationDate']->year.'-'.str_pad((string) $loan->id, 6, '0', STR_PAD_LEFT)]);
+            $loan->update(['application_number' => app(DocumentNumberService::class)->generate('loan', $loan->id, $computed['applicationDate'])]);
 
             foreach ($computed['schedule'] as $entry) {
                 $loan->schedule()->create($entry);
@@ -266,6 +268,9 @@ class LoanController extends Controller
             abort(422, $failedChecks->first()['detail']);
         }
 
+        if (! \App\Models\LoanSetting::current()->allow_eligibility_override) {
+            abort(422, 'Loan eligibility overrides are disabled in Loan Settings.');
+        }
         if (! $request->user()->hasPermission('loans.override_eligibility')) {
             abort(403, "You don't have permission to override eligibility checks.");
         }
@@ -328,7 +333,16 @@ class LoanController extends Controller
         // authoritative, overrides whatever the client sent.
         if ($loanType && $loanType->incomeBrackets->isNotEmpty()) {
             $bracket = $member->net_pay !== null ? $bracketService->bracketFor($loanType, (float) $member->net_pay) : null;
-            $requestedAmount = $bracket ? (float) $bracket->loanable_amount : null;
+            if (! $bracket) {
+                $requestedAmount = null;
+            } elseif ($requestedAmount !== null
+                && ($requestedAmount < (float) $loanType->min_amount || $requestedAmount > (float) $bracket->loanable_amount)) {
+                throw ValidationException::withMessages([
+                    'requestedAmount' => [
+                        "Requested amount must be between {$loanType->min_amount} and {$bracket->loanable_amount} for the member's net-pay bracket.",
+                    ],
+                ]);
+            }
         }
 
         $computation = null;

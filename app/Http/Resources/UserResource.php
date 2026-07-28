@@ -29,6 +29,7 @@ class UserResource extends JsonResource
             'avatarUrl' => $this->avatar_url,
             'status' => $this->status,
             'lastLoginAt' => $this->last_login_at?->toIso8601String(),
+            'requirePasswordChange' => (bool) $this->require_password_change,
         ];
     }
 }

@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Exceptions\ApprovalActionConflictException;
 use App\Models\ApprovalAction;
 use App\Models\ApprovalInstance;
+use App\Models\AnnualBudget;
+use App\Models\Disbursement;
 use App\Models\BenefitApplication;
 use App\Models\Loan;
 use App\Models\Member;
@@ -130,7 +132,7 @@ class ApprovalWorkflowService
                 'reject' => $this->applyReject($subject, $instance, $remarks),
                 'return' => $this->applyReturn($subject, $instance),
                 'release' => $this->applyRelease($subject, $instance, $extra),
-                default => $this->applyAdvance($subject, $instance, $stage, $extra),
+                default => $this->applyAdvance($subject, $instance, $stage, $extra, $actor),
             };
 
             $this->auditLog->record($actor, $subject, $action, $remarks);
@@ -214,6 +216,8 @@ class ApprovalWorkflowService
                 ->with(['definition', 'currentStage', 'subject' => fn ($morphTo) => $morphTo->morphWith([
                     Loan::class => ['member'],
                     BenefitApplication::class => ['member'],
+                    AnnualBudget::class => [],
+                    Disbursement::class => ['budgetItem'],
                 ])]);
 
             if ($subjectClass) {
@@ -236,6 +240,8 @@ class ApprovalWorkflowService
             ->with(['stage', 'subject' => fn ($morphTo) => $morphTo->morphWith([
                 Loan::class => ['member'],
                 BenefitApplication::class => ['member'],
+                AnnualBudget::class => [],
+                Disbursement::class => ['budgetItem'],
             ])]);
 
         if ($subjectClass) {
@@ -340,7 +346,7 @@ class ApprovalWorkflowService
     /**
      * @param  array<string, mixed>  $extra
      */
-    private function applyAdvance(Model $subject, ApprovalInstance $instance, WorkflowStage $stage, array $extra): void
+    private function applyAdvance(Model $subject, ApprovalInstance $instance, WorkflowStage $stage, array $extra, User $actor): void
     {
         $next = $this->findNextStage($stage);
 
@@ -354,9 +360,27 @@ class ApprovalWorkflowService
         }
 
         $instance->update(['status' => 'approved', 'current_stage_id' => null, 'completed_at' => now()]);
-        $subject instanceof Member
-            ? ($extra !== [] && $subject->update($extra))
-            : $subject->update(['status' => 'Approved', ...$extra]);
+        if ($subject instanceof Member) {
+            $extra !== [] && $subject->update($extra);
+        } elseif ($subject instanceof AnnualBudget) {
+            $subject->update([
+                'status' => 'Approved',
+                'approved_by' => $actor->full_name,
+                'approved_at' => now(),
+                'rejection_reason' => null,
+                ...$extra,
+            ]);
+        } elseif ($subject instanceof Disbursement) {
+            $subject->update([
+                'status' => 'Approved',
+                'approved_by' => $actor->full_name,
+                'approved_at' => now(),
+                'rejection_reason' => null,
+                ...$extra,
+            ]);
+        } else {
+            $subject->update(['status' => 'Approved', ...$extra]);
+        }
     }
 
     private function findNextStage(WorkflowStage $stage): ?WorkflowStage
@@ -453,6 +477,8 @@ class ApprovalWorkflowService
             $subject instanceof Member => "Member registration for {$subject->full_name}",
             $subject instanceof Loan => "Loan application {$subject->application_number}",
             $subject instanceof BenefitApplication => "Benefit application {$subject->application_number}",
+            $subject instanceof AnnualBudget => "Annual budget {$subject->fiscal_year}",
+            $subject instanceof Disbursement => "Disbursement {$subject->reference_number}",
             default => class_basename($subject),
         };
     }
@@ -463,6 +489,8 @@ class ApprovalWorkflowService
             'members' => Member::class,
             'loans' => Loan::class,
             'benefits' => BenefitApplication::class,
+            'annual-budgets' => AnnualBudget::class,
+            'disbursements' => Disbursement::class,
             default => throw new InvalidArgumentException("Unknown approval subject type [{$slug}]."),
         };
     }
@@ -473,6 +501,8 @@ class ApprovalWorkflowService
             $subject instanceof Member => 'members',
             $subject instanceof Loan => 'loans',
             $subject instanceof BenefitApplication => 'benefits',
+            $subject instanceof AnnualBudget => 'annual-budgets',
+            $subject instanceof Disbursement => 'disbursements',
             default => throw new InvalidArgumentException('Unknown approval subject.'),
         };
     }

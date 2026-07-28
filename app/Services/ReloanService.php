@@ -16,7 +16,10 @@ use Illuminate\Validation\ValidationException;
  */
 class ReloanService
 {
-    public function __construct(private readonly AuditLogService $auditLog) {}
+    public function __construct(
+        private readonly AuditLogService $auditLog,
+        private readonly DocumentNumberService $documentNumbers,
+    ) {}
 
     public function createDraft(Loan $previousLoan, User $actor): Loan
     {
@@ -64,7 +67,7 @@ class ReloanService
                 'requirements' => [],
                 'created_by' => $actor->full_name,
             ]);
-            $reloan->update(['application_number' => 'GCGEA-LN-'.now()->year.'-'.str_pad((string) $reloan->id, 6, '0', STR_PAD_LEFT)]);
+            $reloan->update(['application_number' => $this->documentNumbers->generate('loan', $reloan->id, $reloan->application_date)]);
 
             $this->auditLog->record($actor, $reloan, 'reloan_draft_created', "Linked to previous loan {$previousLoan->application_number}.");
 

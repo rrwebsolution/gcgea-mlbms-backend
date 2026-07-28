@@ -31,6 +31,7 @@ class BenefitApplicationResource extends JsonResource
             'status' => $this->status,
             'draftCurrentStep' => $this->draft_current_step,
             'releaseDate' => $this->release_date?->toDateString(),
+            'releaseReferenceNumber' => $this->release_reference_number,
             'rejectionReason' => $this->rejection_reason,
             'cancellationReason' => $this->cancellation_reason,
             'remarks' => $this->remarks,

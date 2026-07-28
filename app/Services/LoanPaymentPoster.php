@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\LoanPaymentPostingException;
 use App\Models\Loan;
 use App\Models\LoanPayment;
+use App\Models\LoanSetting;
 
 /**
  * Single place that knows how to post a payment against a loan: validates
@@ -37,19 +38,29 @@ class LoanPaymentPoster
         }
 
         $amountPaid = round((float) $data['amountPaid'], 2);
-        $penalty = round((float) ($data['penalty'] ?? 0), 2);
+        $policy = LoanSetting::current();
+        $penalty = array_key_exists('penalty', $data) && $data['penalty'] !== null
+            ? round((float) $data['penalty'], 2)
+            : $this->automaticPenalty($loan, $meta['paymentDate'], $policy);
         $amountApplied = round($amountPaid - $penalty, 2);
         $principalBalanceBefore = max(0, round((float) $loan->principal_balance, 2));
         $interestBalanceBefore = max(0, round((float) $loan->interest_balance, 2));
         // principal_balance and interest_balance are the authoritative ledger
         // components. Never validate a payment against a stale cached total.
         $outstandingBalance = round($principalBalanceBefore + $interestBalanceBefore, 2);
+        $regularInstallment = min($outstandingBalance, max(0, round((float) $loan->monthly_amortization, 2)));
 
         if ($amountApplied <= 0) {
             throw new LoanPaymentPostingException('The payment amount must be greater than the penalty.');
         }
         if ($amountApplied > $outstandingBalance + self::TOLERANCE) {
             throw new LoanPaymentPostingException('The payment exceeds the outstanding loan balance.');
+        }
+        if (! $policy->allow_partial_payment && $amountApplied + self::TOLERANCE < $regularInstallment) {
+            throw new LoanPaymentPostingException('Partial loan payments are disabled. Please pay at least the regular installment amount.');
+        }
+        if (! $policy->allow_advance_payment && $amountApplied > $regularInstallment + self::TOLERANCE) {
+            throw new LoanPaymentPostingException('Advance loan payments are disabled. Please pay only the regular installment amount.');
         }
 
         $interestAlreadyPaid = (float) $loan->payments()->where('status', 'Posted')->sum('interest_portion');
@@ -99,7 +110,7 @@ class LoanPaymentPoster
             'remarks' => $meta['remarks'] ?? null,
             'status' => 'Posted',
         ]);
-        $payment->update(['payment_reference_number' => 'GCGEA-PAY-'.now()->year.'-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT)]);
+        $payment->update(['payment_reference_number' => app(DocumentNumberService::class)->generate('loanPayment', $payment->id, $payment->payment_date)]);
 
         $loan->update([
             'outstanding_balance' => $newOutstandingBalance,
@@ -118,5 +129,22 @@ class LoanPaymentPoster
             statusAfter: $newStatus,
             warnings: $warnings,
         );
+    }
+
+    private function automaticPenalty(Loan $loan, string $paymentDate, LoanSetting $policy): float
+    {
+        if ((float) $policy->default_penalty_rate <= 0) {
+            return 0.0;
+        }
+
+        $cutoff = \Illuminate\Support\Carbon::parse($paymentDate)
+            ->subDays((int) $policy->grace_period_days)
+            ->toDateString();
+        $overdueAmount = (float) $loan->schedule()
+            ->whereDate('due_date', '<', $cutoff)
+            ->whereIn('status', ['Upcoming', 'Due', 'Overdue', 'Partially Paid'])
+            ->sum('amount_due');
+
+        return round($overdueAmount * (float) $policy->default_penalty_rate / 100, 2);
     }
 }

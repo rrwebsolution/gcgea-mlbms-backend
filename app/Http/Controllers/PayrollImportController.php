@@ -26,28 +26,31 @@ class PayrollImportController extends Controller
     public function upload(Request $request)
     {
         $data = $request->validate([
-            // `mimes:xlsx,xls` sniffs the file's actual content-type via
+            // `mimes:xlsx,xls,csv` sniffs the file's actual content-type via
             // fileinfo — on Windows this frequently misdetects a perfectly
             // valid .xlsx (a zip archive under the hood) as application/zip
             // or application/octet-stream and rejects it. Validate by
             // extension instead; PhpSpreadsheet throws its own clear error
             // later if the file turns out not to be a real workbook.
-            'file' => ['required', 'file', 'extensions:xlsx,xls', 'max:10240'],
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv', 'max:10240'],
             'payrollPeriod' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
             'payrollReference' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $file = $request->file('file');
+        $ext = strtolower($file->getClientOriginalExtension());
         $token = (string) Str::uuid();
-        $storagePath = "payroll-imports/{$token}/original.xlsx";
-        Storage::disk('local')->putFileAs("payroll-imports/{$token}", $request->file('file'), 'original.xlsx');
+        $storagePath = "payroll-imports/{$token}/original.{$ext}";
+        Storage::disk('local')->putFileAs("payroll-imports/{$token}", $file, "original.{$ext}");
 
         $absolutePath = Storage::disk('local')->path($storagePath);
-        $detection = $this->service->detectColumns($absolutePath);
+        $detection = $this->service->detectColumns($absolutePath, $ext);
 
         $batch = PayrollImportBatch::create([
             'token' => $token,
-            'original_filename' => $request->file('file')->getClientOriginalName(),
+            'original_filename' => $file->getClientOriginalName(),
             'storage_path' => $storagePath,
+            'source_file_ext' => $ext,
             'payroll_period' => $data['payrollPeriod'],
             'payroll_reference' => $data['payrollReference'] ?? null,
             'column_mapping' => $detection['detectedMapping'],
@@ -94,7 +97,7 @@ class PayrollImportController extends Controller
         $data = $request->validate(['sheet' => ['required', 'string']]);
 
         $absolutePath = Storage::disk('local')->path($batch->storage_path);
-        $detection = $this->service->detectColumns($absolutePath, $data['sheet']);
+        $detection = $this->service->detectColumns($absolutePath, $batch->source_file_ext, $data['sheet']);
 
         $batch->update([
             'column_mapping' => $detection['detectedMapping'],
@@ -132,7 +135,7 @@ class PayrollImportController extends Controller
         $mapping = array_merge(array_fill_keys(array_keys(PayrollColumnMapper::TARGET_FIELDS), null), $data['mapping']);
 
         $absolutePath = Storage::disk('local')->path($batch->storage_path);
-        $result = $this->service->validate($absolutePath, $mapping, $batch, $batch->sheet_meta['sheetName'] ?? null);
+        $result = $this->service->validate($absolutePath, $batch->source_file_ext, $mapping, $batch, $batch->sheet_meta['sheetName'] ?? null);
 
         $batch->rows()->delete();
         foreach ($result['rows'] as $row) {

@@ -70,7 +70,7 @@ class LoanPaymentController extends Controller
 
                 $result = $this->poster->post($loan, [
                     'amountPaid' => $data['amountPaid'],
-                    'penalty' => $data['penalty'] ?? 0,
+                    'penalty' => $data['penalty'] ?? null,
                 ], [
                     'paymentDate' => $data['paymentDate'],
                     'paymentMethod' => $data['paymentMethod'],

@@ -2,6 +2,8 @@
 
 use App\Exceptions\ApprovalActionConflictException;
 use App\Http\Middleware\EnsurePermission;
+use App\Http\Middleware\RequirePasswordChange;
+use App\Http\Middleware\EnsureNotInMaintenanceMode;
 use App\Providers\AuthServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,7 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
-        $middleware->alias(['permission' => EnsurePermission::class]);
+        $middleware->alias([
+            'permission' => EnsurePermission::class,
+            'password.changed' => RequirePasswordChange::class,
+            'maintenance' => EnsureNotInMaintenanceMode::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (ApprovalActionConflictException $e, Request $request) {

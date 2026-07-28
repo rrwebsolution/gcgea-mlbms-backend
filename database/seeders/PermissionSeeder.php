@@ -176,6 +176,26 @@ class PermissionSeeder extends Seeder
                     ['approval_workflow.configure', 'Configure Approval Workflow', 'Create/edit workflow stage assignments'],
                 ],
             ],
+            'annual_budgets' => [
+                'label' => 'Annual Budgets',
+                'permissions' => [
+                    ['annual_budgets.view', 'View Annual Budgets', 'View annual budget lists and details'],
+                    ['annual_budgets.manage', 'Manage Annual Budgets', 'Create and edit annual budget drafts'],
+                    ['annual_budgets.submit', 'Submit Annual Budgets', 'Submit annual budgets for approval'],
+                    ['annual_budgets.approve', 'Approve Annual Budgets', 'Approve, reject, or return annual budgets'],
+                ],
+            ],
+            'disbursements' => [
+                'label' => 'Disbursements',
+                'permissions' => [
+                    ['disbursements.view', 'View Disbursements', 'View disbursement records and reports'],
+                    ['disbursements.manage', 'Manage Disbursements', 'Create and edit disbursement drafts'],
+                    ['disbursements.submit', 'Submit Disbursements', 'Submit disbursements for approval'],
+                    ['disbursements.approve', 'Approve Disbursements', 'Approve, reject, or return disbursements'],
+                    ['disbursements.pay', 'Pay Disbursements', 'Mark approved disbursements as paid'],
+                    ['disbursements.void', 'Void Disbursements', 'Void paid disbursements'],
+                ],
+            ],
             'drafts' => [
                 'label' => 'Drafts',
                 'permissions' => [

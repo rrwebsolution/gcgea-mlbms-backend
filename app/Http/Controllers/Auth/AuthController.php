@@ -25,15 +25,32 @@ class AuthController extends Controller
         $user = User::where('username', $login)->orWhere('email', $login)->first();
 
         if (! $user) {
-            return response()->json(['message' => 'Invalid username/email or password.'], 422);
+            $credentialLabel = filter_var($login, FILTER_VALIDATE_EMAIL) ? 'email address' : 'username';
+
+            return response()->json([
+                'message' => "No account was found for that {$credentialLabel}.",
+                'errors' => [
+                    'usernameOrEmail' => ["No account was found for that {$credentialLabel}."],
+                ],
+            ], 422);
         }
 
         if ($user->status !== 'Active') {
-            return response()->json(['message' => 'This account has been disabled. Please contact your system administrator.'], 422);
+            return response()->json([
+                'message' => 'This account has been disabled. Please contact your system administrator.',
+                'errors' => [
+                    'usernameOrEmail' => ['This account has been disabled. Please contact your system administrator.'],
+                ],
+            ], 422);
         }
 
         if (! Hash::check($request->string('password')->toString(), $user->password)) {
-            return response()->json(['message' => 'Invalid username/email or password.'], 422);
+            return response()->json([
+                'message' => 'The password you entered is incorrect.',
+                'errors' => [
+                    'password' => ['The password you entered is incorrect.'],
+                ],
+            ], 422);
         }
 
         Auth::login($user, $request->boolean('rememberMe'));
@@ -81,7 +98,10 @@ class AuthController extends Controller
         $status = Password::reset(
             $request->only('email', 'password', 'token'),
             function (User $user, string $password): void {
-                $user->forceFill(['password' => Hash::make($password)])->save();
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                    'require_password_change' => false,
+                ])->save();
             }
         );
 
@@ -92,7 +112,7 @@ class AuthController extends Controller
         return response()->json(['message' => 'Password reset successfully.']);
     }
 
-    public function changePassword(ChangePasswordRequest $request): JsonResponse
+    public function changePassword(ChangePasswordRequest $request): UserResource|JsonResponse
     {
         $user = $request->user();
 
@@ -100,8 +120,15 @@ class AuthController extends Controller
             return response()->json(['message' => 'Your current password is incorrect.'], 422);
         }
 
-        $user->forceFill(['password' => Hash::make($request->string('newPassword')->toString())])->save();
+        if (Hash::check($request->string('newPassword')->toString(), $user->password)) {
+            return response()->json(['message' => 'Your new password must be different from your current password.'], 422);
+        }
 
-        return response()->json(['message' => 'Password updated successfully.']);
+        $user->forceFill([
+            'password' => Hash::make($request->string('newPassword')->toString()),
+            'require_password_change' => false,
+        ])->save();
+
+        return new UserResource($user->fresh());
     }
 }

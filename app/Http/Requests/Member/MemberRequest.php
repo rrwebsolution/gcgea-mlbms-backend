@@ -69,7 +69,18 @@ class MemberRequest extends FormRequest
             'officeId' => [$req, 'exists:offices,id'],
             'position' => [$req, 'string', 'max:255'],
             'dateOfRegularAppointment' => [$req, 'date'],
-            'employmentStatus' => [$req, 'exists:employment_statuses,name'],
+            'employmentStatus' => [
+                $req,
+                Rule::exists('employment_statuses', 'name')->where(function ($query) use ($memberId) {
+                    $query->where('is_active', true);
+                    if ($memberId) {
+                        $currentStatus = $this->route('member')?->employment_status;
+                        if ($currentStatus) {
+                            $query->orWhere('name', $currentStatus);
+                        }
+                    }
+                }),
+            ],
 
             'membershipType' => [$req, Rule::in(['Regular', 'Associate', 'Honorary'])],
             'membershipDate' => [$req, 'date'],

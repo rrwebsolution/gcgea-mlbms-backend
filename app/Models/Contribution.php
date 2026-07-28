@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Contribution extends Model
 {
@@ -37,5 +38,10 @@ class Contribution extends Model
     public function member(): BelongsTo
     {
         return $this->belongsTo(Member::class);
+    }
+
+    public function fundAllocations(): HasMany
+    {
+        return $this->hasMany(ContributionFundAllocation::class);
     }
 }

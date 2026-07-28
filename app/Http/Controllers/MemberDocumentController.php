@@ -78,6 +78,14 @@ class MemberDocumentController extends Controller
         }
 
         $doc = $member->documents()->findOrFail($document);
+        if ($doc->category === 'Payslip'
+            && $member->net_pay !== null
+            && (float) $member->net_pay > 0
+            && $member->documents()->where('category', 'Payslip')->count() <= 1) {
+            return response()->json([
+                'message' => 'Payslip cannot be removed while Monthly Net Pay is recorded.',
+            ], 422);
+        }
         Storage::disk('public')->delete($this->pathFromUrl($doc->file_url));
         $doc->delete();
 

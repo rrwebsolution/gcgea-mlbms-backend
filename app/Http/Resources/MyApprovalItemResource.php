@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Models\ApprovalAction;
+use App\Models\AnnualBudget;
+use App\Models\Disbursement;
 use App\Models\ApprovalInstance;
 use App\Models\BenefitApplication;
 use App\Models\Loan;
@@ -48,6 +50,8 @@ class MyApprovalItemResource extends JsonResource
     {
         return match (true) {
             $subject instanceof Member => $subject->member_number ?? $subject->draft_reference_no,
+            $subject instanceof AnnualBudget => (string) $subject->fiscal_year,
+            $subject instanceof Disbursement => $subject->reference_number,
             default => $subject->application_number ?? null,
         };
     }
@@ -58,6 +62,8 @@ class MyApprovalItemResource extends JsonResource
             $subject instanceof Member => 'Member Registration',
             $subject instanceof Loan => 'Loan Application',
             $subject instanceof BenefitApplication => 'Benefit Application',
+            $subject instanceof AnnualBudget => 'Annual Budget',
+            $subject instanceof Disbursement => 'Disbursement',
             default => class_basename($subject),
         };
     }
@@ -66,6 +72,8 @@ class MyApprovalItemResource extends JsonResource
     {
         return match (true) {
             $subject instanceof Member => $subject->full_name,
+            $subject instanceof AnnualBudget => $subject->prepared_by,
+            $subject instanceof Disbursement => $subject->payee,
             default => $subject->member?->full_name,
         };
     }

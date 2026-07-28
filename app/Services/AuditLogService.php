@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\AuditLog;
+use App\Models\AnnualBudget;
+use App\Models\Disbursement;
 use App\Models\BenefitApplication;
 use App\Models\Loan;
 use App\Models\Member;
@@ -43,6 +45,8 @@ class AuditLogService
             $subject instanceof PayrollImportBatch => 'Payroll Import',
             $subject instanceof PayrollDeductionHeader => 'Payroll Deductions',
             $subject instanceof MemberImportBatch => 'Member Import',
+            $subject instanceof AnnualBudget => 'Annual Budget',
+            $subject instanceof Disbursement => 'Disbursement',
             default => class_basename($subject),
         };
     }
@@ -55,6 +59,8 @@ class AuditLogService
             $subject instanceof PayrollImportBatch => $subject->payroll_reference ?? $subject->token,
             $subject instanceof PayrollDeductionHeader => $subject->payroll_reference,
             $subject instanceof MemberImportBatch => $subject->original_filename ?? $subject->token,
+            $subject instanceof AnnualBudget => (string) $subject->fiscal_year,
+            $subject instanceof Disbursement => $subject->reference_number,
             default => null,
         };
     }

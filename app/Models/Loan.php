@@ -56,6 +56,9 @@ class Loan extends Model
         'cancellation_reason',
         'created_by',
         'draft_current_step',
+        'legacy_import_fingerprint',
+        'legacy_loan_identity',
+        'legacy_source_name',
     ];
 
     protected function casts(): array

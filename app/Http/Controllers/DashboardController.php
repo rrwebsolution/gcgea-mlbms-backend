@@ -9,6 +9,7 @@ use App\Http\Resources\LoanResource;
 use App\Http\Resources\MemberResource;
 use App\Models\BenefitApplication;
 use App\Models\Contribution;
+use App\Models\ContributionFund;
 use App\Models\Loan;
 use App\Models\LoanAmortizationEntry;
 use App\Models\LoanPayment;
@@ -40,6 +41,13 @@ class DashboardController extends Controller
             'monthlyContributionsCollected' => (float) Contribution::where('status', 'Posted')
                 ->where('contribution_period', $currentPeriod)
                 ->sum('amount'),
+            'fundBalances' => ContributionFund::query()->where('is_enabled', true)->orderBy('display_order')->get()->map(fn ($fund) => [
+                'fundId' => (string) $fund->id,
+                'fundName' => $fund->fund_name,
+                'balance' => (float) $fund->allocations()
+                    ->whereHas('contribution', fn ($q) => $q->where('status', 'Posted'))
+                    ->sum('allocated_amount'),
+            ])->values(),
 
             'pendingReloanApplications' => Loan::where('application_type', 'reloan')->where('status', 'Submitted')->count(),
             'reloansAwaitingReview' => Loan::where('application_type', 'reloan')->where('status', 'Under Review')->count(),

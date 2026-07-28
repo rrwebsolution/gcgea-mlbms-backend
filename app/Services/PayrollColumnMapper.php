@@ -23,6 +23,7 @@ class PayrollColumnMapper
     public const TARGET_FIELDS = [
         'member_number' => 'Member Number',
         'employee_number' => 'Employee Number',
+        'office_name' => 'Office',
         'name' => 'Name',
         'loan_remarks' => 'Loan Remarks / Loan Status',
         'principal' => 'Principal',
@@ -43,6 +44,7 @@ class PayrollColumnMapper
     private const ALIASES = [
         'member_number' => ['membernumber', 'memno', 'mbrno'],
         'employee_number' => ['employeenumber', 'empno', 'employeeno', 'idno'],
+        'office_name' => ['nameofoffice', 'officename', 'office'],
         'name' => ['nameofemployee', 'nameofmember', 'employeename', 'membername', 'name'],
         // Deliberately no bare "remarks" alias — too generic, it would steal
         // an unrelated "*Remarks*" historical/summary column instead of the
@@ -70,43 +72,134 @@ class PayrollColumnMapper
     ];
 
     /**
-     * @param  array<int, string>  $headers
+     * @param  array<string, string>  $headers  columnLetter => label
      * @return array{mapping: array<string, string|null>, unmatched: array<int, string>}
      */
     public function detect(array $headers): array
     {
         $pool = [];
-        foreach ($headers as $header) {
-            $pool[$header] = $this->normalize($header);
+        foreach ($headers as $columnLetter => $label) {
+            $pool[$columnLetter] = $this->normalize($label);
         }
 
+        $mapping = array_fill_keys(array_keys(self::TARGET_FIELDS), null);
+
+        // Pass 1: specific, unambiguous aliases — member/employee number,
+        // name, dues, pabaon, total remit, and the literal "previous/current
+        // month" wording some sheets (like the GCGEA template's own
+        // generated headers) use verbatim. "principal"/"interest" are
+        // deliberately skipped here — bare words that generic, they'd grab
+        // the first column mentioning either (usually the loan's original
+        // amount, not the payment) before Pass 2/3 below get a chance to
+        // reason about which occurrence is actually correct.
         $flatAliases = [];
         foreach ($this->aliasesWithDeductionTypes() as $field => $aliases) {
+            if (in_array($field, ['principal', 'interest'], true)) {
+                continue;
+            }
             foreach ($aliases as $alias) {
                 $flatAliases[] = [$field, $alias];
             }
         }
         usort($flatAliases, fn ($a, $b) => strlen($b[1]) <=> strlen($a[1]));
 
-        $mapping = array_fill_keys(array_keys(self::TARGET_FIELDS), null);
-
         foreach ($flatAliases as [$field, $alias]) {
             if ($mapping[$field] !== null) {
                 continue;
             }
-            foreach ($pool as $header => $normalized) {
+            foreach ($pool as $columnLetter => $normalized) {
                 if ($normalized !== '' && str_contains($normalized, $alias)) {
-                    $mapping[$field] = $header;
-                    unset($pool[$header]);
+                    $mapping[$field] = $columnLetter;
+                    unset($pool[$columnLetter]);
                     break;
                 }
             }
+        }
+
+        // Pass 2: real-world sheets usually label balance columns "... as of
+        // <month> <year>" instead of the literal words "previous"/"current
+        // month" — those change every period, so Pass 1's exact aliases
+        // never match them. Detect the pair by structure instead (the field
+        // name plus an "as of" qualifier — the word "balance" itself isn't
+        // required since not every sheet includes it consistently) and use
+        // column order to tell them apart: on a left-to-right chronological
+        // payroll sheet, the earlier column is always last period's balance
+        // and the later one is this period's.
+        if ($mapping['principal_balance_previous'] === null || $mapping['principal_balance_current'] === null) {
+            $this->claimOrderedPair($pool, $mapping, 'principal', 'principal_balance_previous', 'principal_balance_current');
+        }
+        if ($mapping['interest_balance_previous'] === null || $mapping['interest_balance_current'] === null) {
+            $this->claimOrderedPair($pool, $mapping, 'interest', 'interest_balance_previous', 'interest_balance_current');
+        }
+
+        // Pass 3: "Principal"/"Interest" can also appear twice on the same
+        // sheet — once for the loan's original amount, again further right
+        // for this month's actual payment (the one that actually gets
+        // posted). Balance columns are already claimed above, so whatever's
+        // left bearing these words is a genuine payment candidate; prefer
+        // the rightmost one for the same reason.
+        if ($mapping['principal'] === null) {
+            $this->claimLast($pool, $mapping, 'principal', 'principal');
+        }
+        if ($mapping['interest'] === null) {
+            $this->claimLast($pool, $mapping, 'interest', 'interest');
         }
 
         return [
             'mapping' => $mapping,
             'unmatched' => array_keys($pool),
         ];
+    }
+
+    /**
+     * Claims exactly two unclaimed columns whose normalized text contains
+     * both $fieldNeedle and "asof" — the leftmost goes to $previousField,
+     * the rightmost to $currentField. Does nothing if there isn't a clear
+     * pair (0 or 1 matches) — better to leave it for the admin to place by
+     * hand in Map Columns than guess wrong on a single ambiguous column.
+     *
+     * @param  array<string,string>  $pool
+     * @param  array<string,?string>  $mapping
+     */
+    private function claimOrderedPair(array &$pool, array &$mapping, string $fieldNeedle, string $previousField, string $currentField): void
+    {
+        $matches = [];
+        foreach ($pool as $columnLetter => $normalized) {
+            if ($normalized !== '' && str_contains($normalized, $fieldNeedle) && str_contains($normalized, 'asof')) {
+                $matches[] = $columnLetter;
+            }
+        }
+        if (count($matches) < 2) {
+            return;
+        }
+
+        $first = $matches[0];
+        $last = end($matches);
+        if ($mapping[$previousField] === null) {
+            $mapping[$previousField] = $first;
+        }
+        if ($mapping[$currentField] === null) {
+            $mapping[$currentField] = $last;
+        }
+        unset($pool[$first], $pool[$last]);
+    }
+
+    /**
+     * @param  array<string,string>  $pool
+     * @param  array<string,?string>  $mapping
+     */
+    private function claimLast(array &$pool, array &$mapping, string $needle, string $field): void
+    {
+        $matched = null;
+        foreach ($pool as $columnLetter => $normalized) {
+            if ($normalized !== '' && str_contains($normalized, $needle)) {
+                $matched = $columnLetter;
+            }
+        }
+        if ($matched !== null) {
+            $mapping[$field] = $matched;
+            unset($pool[$matched]);
+        }
     }
 
     public static function looksLikeKnownHeader(string $value): bool

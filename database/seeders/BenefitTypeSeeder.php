@@ -6,8 +6,10 @@ use App\Models\BenefitType;
 use Illuminate\Database\Seeder;
 
 /**
- * Mirrors src/services/mock-data/benefit-types.ts — keep the two in sync if
- * the catalog of configured benefit programs changes.
+ * Default benefit programs: GCGEA Board Resolution No. 24-2026's Core
+ * Benefits (Table 1) and Cash Pabaon Program (Table 2), plus the Inactive
+ * Emergency/Operational Fund reference entries. Add new default benefit
+ * types here if the Association formally adopts more.
  */
 class BenefitTypeSeeder extends Seeder
 {
@@ -16,135 +18,9 @@ class BenefitTypeSeeder extends Seeder
      */
     public function run(): void
     {
-        $benefitTypes = [
-            [
-                'name' => 'Medical Assistance',
-                'description' => 'Financial aid for hospitalization or outpatient medical expenses.',
-                'default_amount' => 5000,
-                'maximum_amount' => 15000,
-                'eligibility_requirements' => 'Active member for at least 6 months',
-                'required_membership_months' => 6,
-                'frequency_limit' => 'Twice per year',
-                'required_documents' => ['Medical Certificate', 'Hospital Bill / Receipts', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Hospital Assistance',
-                'description' => 'Assistance for confinement-related hospital expenses.',
-                'default_amount' => 8000,
-                'maximum_amount' => 20000,
-                'eligibility_requirements' => 'Active member, at least 6 months tenure',
-                'required_membership_months' => 6,
-                'frequency_limit' => 'Twice per year',
-                'required_documents' => ['Hospital Bill', 'Discharge Summary', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Burial Assistance',
-                'description' => 'Assistance to the family of a deceased member.',
-                'default_amount' => 20000,
-                'maximum_amount' => 20000,
-                'eligibility_requirements' => 'Member in good standing at time of death',
-                'required_membership_months' => 0,
-                'frequency_limit' => 'Once',
-                'required_documents' => ['Death Certificate', 'Funeral Contract / Receipt', 'Beneficiary Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Death Benefit',
-                'description' => 'Lump sum benefit released to legal beneficiaries upon death of a member.',
-                'default_amount' => 50000,
-                'maximum_amount' => 50000,
-                'eligibility_requirements' => 'Member in good standing at time of death',
-                'required_membership_months' => 12,
-                'frequency_limit' => 'Once',
-                'required_documents' => ['Death Certificate', 'Beneficiary Designation Form', 'Beneficiary Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Emergency Assistance',
-                'description' => 'Assistance for urgent, unforeseen financial needs.',
-                'default_amount' => 3000,
-                'maximum_amount' => 10000,
-                'eligibility_requirements' => 'Active member',
-                'required_membership_months' => 3,
-                'frequency_limit' => 'Once per year',
-                'required_documents' => ['Incident Report / Affidavit', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Calamity Assistance',
-                'description' => 'Assistance for members affected by natural or man-made calamities.',
-                'default_amount' => 5000,
-                'maximum_amount' => 10000,
-                'eligibility_requirements' => 'Active member residing in affected area',
-                'required_membership_months' => 0,
-                'frequency_limit' => 'Per declared calamity',
-                'required_documents' => ['Barangay Certification', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Retirement Benefit',
-                'description' => 'One-time benefit released upon retirement from government service.',
-                'default_amount' => 30000,
-                'maximum_amount' => 30000,
-                'eligibility_requirements' => 'Retiring member with at least 10 years of membership',
-                'required_membership_months' => 120,
-                'frequency_limit' => 'Once',
-                'required_documents' => ['Retirement Order', 'Service Record', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Cash Pabaon',
-                'description' => 'Send-off cash gift for retiring members.',
-                'default_amount' => 10000,
-                'maximum_amount' => 10000,
-                'eligibility_requirements' => 'Retiring member in good standing',
-                'required_membership_months' => 60,
-                'frequency_limit' => 'Once',
-                'required_documents' => ['Retirement Order', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Solidarity Assistance',
-                'description' => 'Mutual aid benefit funded through the solidarity assistance program.',
-                'default_amount' => 15000,
-                'maximum_amount' => 15000,
-                'eligibility_requirements' => 'Active solidarity fund contributor',
-                'required_membership_months' => 12,
-                'frequency_limit' => 'Once',
-                'required_documents' => ['Solidarity Fund Enrollment Form', 'Supporting Documents', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-            [
-                'name' => 'Other Financial Assistance',
-                'description' => 'Catch-all benefit type for special cases approved by the board.',
-                'default_amount' => 2000,
-                'maximum_amount' => 10000,
-                'eligibility_requirements' => 'Subject to board discretion',
-                'required_membership_months' => 0,
-                'frequency_limit' => 'Case-to-case',
-                'required_documents' => ['Board Resolution / Approval', 'Valid ID'],
-                'approval_required' => true,
-                'status' => 'Active',
-            ],
-        ];
-
-        foreach ($benefitTypes as $benefitType) {
-            BenefitType::updateOrCreate(['name' => $benefitType['name']], $benefitType);
-        }
-
         $this->seedResolution242026CoreBenefits();
         $this->seedResolution242026CashPabaonProgram();
+        $this->seedContributionFundReferenceEntries();
     }
 
     /**
@@ -256,5 +132,45 @@ class BenefitTypeSeeder extends Seeder
             ['fiscal_year' => 2028, 'base_amount' => 90000],
             ['fiscal_year' => null, 'base_amount' => 100000],
         ]);
+    }
+
+    /**
+     * Emergency Fund and Operational Fund are reserve pools built from the
+     * per-contribution fund allocations (Contribution Settings) — not
+     * benefits a member applies for. Kept in the Benefit Types catalog for
+     * reference/reporting only, seeded Inactive so they never appear as
+     * choices in the benefit application wizard.
+     */
+    private function seedContributionFundReferenceEntries(): void
+    {
+        $referenceFunds = [
+            [
+                'name' => 'Emergency Fund',
+                'description' => 'Reserve fund built from the Emergency Fund contribution allocation (see Contribution Settings). Not a member-claimable benefit.',
+                'eligibility_requirements' => 'Not applicable — funded internally from contribution allocations, not claimed by members.',
+            ],
+            [
+                'name' => 'Operational Fund',
+                'description' => 'Reserve fund built from the Operational Fund contribution allocation (see Contribution Settings). Not a member-claimable benefit.',
+                'eligibility_requirements' => 'Not applicable — funded internally from contribution allocations, not claimed by members.',
+            ],
+        ];
+
+        foreach ($referenceFunds as $definition) {
+            BenefitType::updateOrCreate(
+                ['name' => $definition['name']],
+                [
+                    'description' => $definition['description'],
+                    'default_amount' => 0,
+                    'maximum_amount' => 0,
+                    'eligibility_requirements' => $definition['eligibility_requirements'],
+                    'required_membership_months' => 0,
+                    'frequency_limit' => 'N/A',
+                    'required_documents' => [],
+                    'approval_required' => false,
+                    'status' => 'Inactive',
+                ]
+            );
+        }
     }
 }

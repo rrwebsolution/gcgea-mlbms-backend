@@ -8,6 +8,7 @@ use App\Models\Member;
 use App\Services\ApprovalWorkflowService;
 use App\Services\LoanEligibilityService;
 use App\Services\MembershipApprovalService;
+use App\Services\DocumentNumberService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ class MemberController extends Controller
     public function __construct(
         private readonly ApprovalWorkflowService $workflow,
         private readonly MembershipApprovalService $membershipApproval,
+        private readonly DocumentNumberService $documentNumbers,
     ) {}
 
     /**
@@ -124,7 +126,7 @@ class MemberController extends Controller
             if ($asDraft) {
                 $member->update(['draft_reference_no' => 'GCGEA-MEM-DRAFT-'.now()->year.'-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT)]);
             } else {
-                $member->update(['member_number' => 'GCGEA-MEM-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT)]);
+                $member->update(['member_number' => $this->documentNumbers->generate('member', $member->id)]);
             }
 
             $this->syncBeneficiaries($member, $request->input('beneficiaries', []));
@@ -220,7 +222,7 @@ class MemberController extends Controller
             ]);
 
             if (! $member->member_number) {
-                $member->update(['member_number' => 'GCGEA-MEM-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT)]);
+                $member->update(['member_number' => $this->documentNumbers->generate('member', $member->id)]);
             }
 
             $this->syncBeneficiaries($member, $request->input('beneficiaries', []));
@@ -293,6 +295,10 @@ class MemberController extends Controller
         }
         if ($office = $request->string('office')->toString()) {
             $query->whereHas('office', fn ($q) => $q->where('name', $office));
+        }
+        $offices = array_values(array_filter((array) $request->input('offices', [])));
+        if (count($offices) > 0) {
+            $query->whereHas('office', fn ($q) => $q->whereIn('name', $offices));
         }
         if ($sex = $request->string('sex')->toString()) {
             $query->where('sex', $sex);

@@ -46,7 +46,11 @@ class LoanResource extends JsonResource
 
             'status' => $this->status,
             'draftCurrentStep' => $this->draft_current_step,
-            'assignedOfficer' => $this->assigned_officer,
+            'assignedOfficer' => $this->legacy_source_name
+                ? ($this->assigned_officer && $this->assigned_officer !== 'Legacy Loan Import'
+                    ? $this->assigned_officer
+                    : 'Pre-System Loan Officer')
+                : ($this->assigned_officer ?: 'Unassigned'),
 
             'applicationType' => $this->application_type,
             'previousLoanId' => $this->previous_loan_id !== null ? (string) $this->previous_loan_id : null,

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\IReader;
 
 /**
  * Reads a payroll deduction workbook into a plain grid, tolerant of merged
@@ -14,11 +15,11 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 class PayrollSheetParser
 {
     /**
-     * @return array{headers: array<int, string>, headerRowIndex: int, dataRows: array<int, array<string, mixed>>, sheetNames: array<int, string>, selectedSheet: string}
+     * @return array{headers: array<string, string>, headerRowIndex: int, dataRows: array<int, array<string, mixed>>, sheetNames: array<int, string>, selectedSheet: string}
      */
-    public function parse(string $absolutePath, ?string $sheetName = null): array
+    public function parse(string $absolutePath, string $ext, ?string $sheetName = null): array
     {
-        $spreadsheet = IOFactory::load($absolutePath);
+        $spreadsheet = $this->readerFor($ext)->load($absolutePath);
         $sheetNames = $spreadsheet->getSheetNames();
         // Falls back to the active sheet when no name is given, or when a
         // stale/invalid name is passed — never a hard error over a sheet pick.
@@ -56,11 +57,17 @@ class PayrollSheetParser
         $headerRowIndex = $this->detectHeaderRow($grid, $highestRow, $highestColumnIndex);
         $headerRow = $grid[$headerRowIndex] ?? [];
 
+        // Keyed by spreadsheet column letter, not label text. Real payroll
+        // sheets repeat header text (e.g. an original "Principal" loan amount
+        // column and a separate "Principal" column further right holding this
+        // month's actual payment) — keying by label would let the second
+        // silently overwrite the first in every data row, discarding one of
+        // the two values entirely. Column letters are always unique.
         $headers = [];
         foreach ($headerRow as $col => $value) {
             $label = is_string($value) ? trim($value) : (string) ($value ?? '');
             if ($label !== '') {
-                $headers[$col] = $label;
+                $headers[Coordinate::stringFromColumnIndex($col)] = $label;
             }
         }
 
@@ -69,12 +76,16 @@ class PayrollSheetParser
             $rowValues = $grid[$row] ?? [];
             $isBlank = true;
             $keyed = [];
-            foreach ($headers as $col => $label) {
+            foreach ($headerRow as $col => $__) {
+                $columnLetter = Coordinate::stringFromColumnIndex($col);
+                if (! isset($headers[$columnLetter])) {
+                    continue;
+                }
                 $value = $rowValues[$col] ?? null;
                 if ($value !== null && $value !== '') {
                     $isBlank = false;
                 }
-                $keyed[$label] = $value;
+                $keyed[$columnLetter] = $value;
             }
             if ($isBlank) {
                 continue;
@@ -83,12 +94,21 @@ class PayrollSheetParser
         }
 
         return [
-            'headers' => array_values($headers),
+            'headers' => $headers,
             'headerRowIndex' => $headerRowIndex,
             'dataRows' => $dataRows,
             'sheetNames' => $sheetNames,
             'selectedSheet' => $sheet->getTitle(),
         ];
+    }
+
+    private function readerFor(string $ext): IReader
+    {
+        return match (strtolower($ext)) {
+            'csv' => IOFactory::createReader('Csv'),
+            'xls' => IOFactory::createReader('Xls'),
+            default => IOFactory::createReader('Xlsx'),
+        };
     }
 
     /**

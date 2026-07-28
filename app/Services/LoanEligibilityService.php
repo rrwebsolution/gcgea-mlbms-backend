@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Contribution;
+use App\Models\Deduction;
 use App\Models\Loan;
 use App\Models\LoanSetting;
 use App\Models\LoanType;
@@ -188,11 +189,19 @@ class LoanEligibilityService
         $currentPeriod = now()->format('Y-m');
         $priorPeriod = now()->subMonthNoOverflow()->format('Y-m');
 
-        $current = Contribution::where('member_id', $member->id)
-            ->where('contribution_type', $type)
-            ->where('status', 'Posted')
-            ->whereIn('contribution_period', [$currentPeriod, $priorPeriod])
-            ->exists();
+        $current = $type === 'Cash Pabaon'
+            ? Deduction::query()
+                ->where('member_id', $member->id)
+                ->where('status', 'Posted')
+                ->whereIn('period', [$currentPeriod, $priorPeriod])
+                ->whereHas('deductionType', fn ($query) => $query->where('code', 'pabaon'))
+                ->exists()
+            : Contribution::query()
+                ->where('member_id', $member->id)
+                ->where('contribution_type', $type)
+                ->where('status', 'Posted')
+                ->whereIn('contribution_period', [$currentPeriod, $priorPeriod])
+                ->exists();
 
         $label = $type === 'Cash Pabaon' ? 'Cash Pabaon Current' : 'Monthly Dues Current';
 
@@ -200,8 +209,10 @@ class LoanEligibilityService
             'label' => $label,
             'passed' => $current,
             'detail' => $current
-                ? "{$type} contribution is current."
-                : "No {$type} contribution on record for {$priorPeriod} or {$currentPeriod}.",
+                ? ($type === 'Cash Pabaon' ? 'Cash Pabaon deduction is current.' : "{$type} contribution is current.")
+                : ($type === 'Cash Pabaon'
+                    ? "No Cash Pabaon deduction on record for {$priorPeriod} or {$currentPeriod}."
+                    : "No {$type} contribution on record for {$priorPeriod} or {$currentPeriod}."),
         ];
     }
 
@@ -234,10 +245,16 @@ class LoanEligibilityService
     {
         if ($loanType->incomeBrackets->isNotEmpty()) {
             $hasNetPay = $member->net_pay !== null;
+            $bracket = $hasNetPay
+                ? app(LoanIncomeBracketService::class)->bracketFor($loanType, (float) $member->net_pay)
+                : null;
+            $withinRange = $bracket
+                && $requestedAmount >= (float) $loanType->min_amount
+                && $requestedAmount <= (float) $bracket->loanable_amount;
 
             return [
-                'label' => 'Net Pay On File',
-                'passed' => $hasNetPay,
+                'label' => 'Requested Amount Within Net-Pay Range',
+                'passed' => (bool) $withinRange,
                 'detail' => $hasNetPay
                     ? "Member's monthly net pay (₱{$member->net_pay}) is on file for bracket lookup."
                     : 'This loan type requires the member\'s monthly net take-home pay to determine the loanable amount.',

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\MembershipApprovalSetting;
+use App\Models\Role;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
 use Illuminate\Http\Request;
@@ -32,18 +33,27 @@ class MembershipApprovalSettingController extends Controller
             'autoApproveRequiresPermission' => ['required', 'boolean'],
         ]);
 
-        $requiresApproval = $data['manualRegistrationRequiresApproval'] || $data['importedMembersRequireApproval'];
-        if ($requiresApproval) {
+        $needsFallbackApprover = $data['manualRegistrationRequiresApproval']
+            || $data['importedMembersRequireApproval']
+            || $data['autoApproveRequiresPermission'];
+        if ($needsFallbackApprover) {
             if ($data['approverAssignmentType'] === 'user') {
                 $approver = User::whereKey($data['defaultApproverUserId'])->where('status', 'Active')->first();
                 abort_unless($approver && $approver->hasPermission('members.approve'), 422, 'Please select an active user with member approval permission.');
             }
             if ($data['approverAssignmentType'] === 'role') {
-                abort_unless($data['defaultApproverRoleId'], 422, 'Please select an approving role.');
+                $role = Role::whereKey($data['defaultApproverRoleId'])
+                    ->where('status', 'Active')
+                    ->whereHas('permissions', fn ($query) => $query->where('permissions.code', 'members.approve'))
+                    ->first();
+                abort_unless($role, 422, 'Please select an active role with member approval permission.');
             }
             if ($data['approverAssignmentType'] === 'workflow') {
-                $workflow = WorkflowDefinition::whereKey($data['approvalWorkflowId'])->where('is_enabled', true)->first();
-                abort_unless($workflow, 422, 'Please select an enabled approval workflow.');
+                $workflow = WorkflowDefinition::whereKey($data['approvalWorkflowId'])
+                    ->where('module_key', 'member_registration')
+                    ->where('is_enabled', true)
+                    ->first();
+                abort_unless($workflow, 422, 'Please select the enabled Member Registration approval workflow.');
             }
         }
 

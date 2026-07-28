@@ -1,18 +1,25 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\AnnualBudgetController;
+use App\Http\Controllers\DisbursementController;
+use App\Http\Controllers\MonthlyDisbursementReportController;
 use App\Http\Controllers\Admin\WorkflowDefinitionController;
 use App\Http\Controllers\Admin\MembershipApprovalSettingController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BenefitApplicationController;
 use App\Http\Controllers\BenefitTypeController;
+use App\Http\Controllers\BulkPayrollDeductionController;
 use App\Http\Controllers\ContributionController;
+use App\Http\Controllers\ContributionFundController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\DeductionTypeController;
 use App\Http\Controllers\EmploymentStatusController;
 use App\Http\Controllers\LoanController;
+use App\Http\Controllers\LegacyLoanImportController;
+use App\Http\Controllers\LoanImportHistoryController;
 use App\Http\Controllers\LoanPaymentController;
 use App\Http\Controllers\LoanSettingsController;
 use App\Http\Controllers\LoanTypeController;
@@ -26,6 +33,7 @@ use App\Http\Controllers\PayrollImportController;
 use App\Http\Controllers\ReloanController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\RemittanceBreakdownReportController;
 use App\Http\Controllers\SystemSettingController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -42,7 +50,7 @@ Route::prefix('auth')->group(function () {
     });
 });
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'password.changed', 'maintenance'])->group(function () {
     Route::post('/report-exports/pdf', [ReportExportController::class, 'pdf']);
     Route::post('/report-exports/excel', [ReportExportController::class, 'excel']);
 
@@ -115,12 +123,35 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/contributions/all', [ContributionController::class, 'all']);
     Route::get('/contributions/periods', [ContributionController::class, 'periods']);
     Route::get('/contributions/check-duplicate', [ContributionController::class, 'checkDuplicate']);
+    Route::post('/contributions/check-duplicates', [ContributionController::class, 'checkDuplicates']);
     Route::get('/contributions', [ContributionController::class, 'index']);
     Route::post('/contributions', [ContributionController::class, 'store']);
     Route::post('/contributions/bulk', [ContributionController::class, 'bulkStore']);
     Route::get('/contributions/{contribution}', [ContributionController::class, 'show']);
     Route::put('/contributions/{contribution}', [ContributionController::class, 'update']);
     Route::post('/contributions/{contribution}/void', [ContributionController::class, 'void']);
+
+    // Dynamic Monthly Dues fund allocation
+    Route::get('/contribution-funds', [ContributionFundController::class, 'index']);
+    Route::post('/contribution-funds', [ContributionFundController::class, 'store']);
+    Route::put('/contribution-funds/{contributionFund}', [ContributionFundController::class, 'update']);
+    Route::delete('/contribution-funds/{contributionFund}', [ContributionFundController::class, 'destroy']);
+    Route::get('/reports/fund-allocations', [ContributionFundController::class, 'report']);
+    Route::get('/reports/remittance-breakdown', RemittanceBreakdownReportController::class);
+    Route::get('/annual-budgets', [AnnualBudgetController::class, 'index']);
+    Route::get('/annual-budgets/id/{annualBudget}', [AnnualBudgetController::class, 'showById']);
+    Route::get('/annual-budgets/{year}', [AnnualBudgetController::class, 'show']);
+    Route::put('/annual-budgets/{year}', [AnnualBudgetController::class, 'update']);
+    Route::post('/annual-budgets/{year}/copy-previous', [AnnualBudgetController::class, 'copyPrevious']);
+    Route::post('/annual-budgets/{year}/submit', [AnnualBudgetController::class, 'submit']);
+    Route::get('/disbursements', [DisbursementController::class, 'index']);
+    Route::post('/disbursements', [DisbursementController::class, 'store']);
+    Route::get('/disbursements/{disbursement}', [DisbursementController::class, 'show']);
+    Route::put('/disbursements/{disbursement}', [DisbursementController::class, 'update']);
+    Route::post('/disbursements/{disbursement}/submit', [DisbursementController::class, 'submit']);
+    Route::post('/disbursements/{disbursement}/pay', [DisbursementController::class, 'markPaid']);
+    Route::post('/disbursements/{disbursement}/void', [DisbursementController::class, 'void']);
+    Route::get('/reports/monthly-disbursements', MonthlyDisbursementReportController::class);
 
     // Deduction Types
     Route::get('/deduction-types', [DeductionTypeController::class, 'index']);
@@ -156,7 +187,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('permission:payroll.manual.create')->post('/payroll-deductions/manual', [ManualPayrollDeductionController::class, 'store']);
     Route::middleware('permission:payroll.manual.post')->post('/payroll-deductions/manual/{payrollDeduction}/post', [ManualPayrollDeductionController::class, 'post']);
 
+    Route::middleware('permission:payroll.bulk.view')->group(function () {
+        Route::get('/payroll-deductions/bulk/reference', [BulkPayrollDeductionController::class, 'reference']);
+        Route::post('/payroll-deductions/bulk/members/context', [BulkPayrollDeductionController::class, 'membersContext']);
+    });
+    Route::middleware('permission:payroll.bulk.create')->post('/payroll-deductions/bulk', [BulkPayrollDeductionController::class, 'store']);
+    Route::middleware('permission:payroll.bulk.post')->post('/payroll-deductions/bulk/{reference}/post', [BulkPayrollDeductionController::class, 'post']);
+
     // Loans
+    Route::middleware('permission:loan_payments.import')->group(function () {
+        Route::post('/legacy-loan-imports', [LegacyLoanImportController::class, 'upload']);
+        Route::post('/legacy-loan-imports/{token}/commit', [LegacyLoanImportController::class, 'commit']);
+        Route::get('/loan-imports/history', [LoanImportHistoryController::class, 'index']);
+        Route::get('/loan-imports/history/{batch:token}', [LoanImportHistoryController::class, 'show']);
+    });
     Route::get('/loans/all', [LoanController::class, 'all']);
     Route::get('/loans', [LoanController::class, 'index']);
     Route::post('/loans', [LoanController::class, 'store']);
@@ -210,8 +254,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Notifications
     Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
 
     // Audit Logs
     Route::middleware('permission:audit_logs.view')->get('/admin/audit-logs', [AuditLogController::class, 'index']);

@@ -30,7 +30,17 @@ class ManualPayrollDeductionController extends Controller
     public function member(Member $member): JsonResponse
     {
         $member->load(['office', 'beneficiaries', 'documents', 'approvalInstance']);
-        abort_unless(! $member->is_draft && ! $member->is_archived && $member->membership_status === 'Active' && $member->approvalInstance?->status === 'approved', 422, 'Only approved, active members may be selected.');
+
+        // Mirrors LoanEligibilityService::registrationApprovedCheck() — most
+        // members here (payroll/manual imports, legacy migrations) were
+        // created directly at Active and never routed through the
+        // registration workflow, so they have no approval_instances row at
+        // all. That's not the same as "not yet approved"; only a row that
+        // exists but isn't 'approved' (pending/rejected/returned) fails this.
+        $instanceStatus = $member->approvalInstance?->status;
+        $registrationApproved = $instanceStatus !== null ? $instanceStatus === 'approved' : $member->membership_status !== 'Pending';
+
+        abort_unless(! $member->is_draft && ! $member->is_archived && $member->membership_status === 'Active' && $registrationApproved, 422, 'Only approved, active members may be selected.');
         $loan = Loan::query()->where('member_id', $member->id)->whereIn('status', ['Released', 'Active', 'Overdue', 'Restructured'])->latest()->first();
 
         return response()->json(['member' => new MemberResource($member), 'activeLoan' => $loan ? [

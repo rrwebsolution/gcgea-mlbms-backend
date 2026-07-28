@@ -21,13 +21,14 @@ class EmploymentStatusController extends Controller
     public function store(Request $request): EmploymentStatusResource
     {
         $this->authorizeUpdate($request);
+        $request->merge(['name' => trim((string) $request->input('name'))]);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100', 'unique:employment_statuses,name'],
             'sortOrder' => ['sometimes', 'integer', 'min:0'],
         ]);
 
         return new EmploymentStatusResource(EmploymentStatus::create([
-            'name' => $data['name'],
+            'name' => trim($data['name']),
             'sort_order' => $data['sortOrder'] ?? 0,
             'is_active' => true,
         ]));
@@ -36,6 +37,7 @@ class EmploymentStatusController extends Controller
     public function update(Request $request, EmploymentStatus $employmentStatus): EmploymentStatusResource
     {
         $this->authorizeUpdate($request);
+        $request->merge(['name' => trim((string) $request->input('name'))]);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100', Rule::unique('employment_statuses', 'name')->ignore($employmentStatus->id)],
             'sortOrder' => ['sometimes', 'integer', 'min:0'],

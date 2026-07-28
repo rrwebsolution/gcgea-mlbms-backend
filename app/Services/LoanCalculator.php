@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\LoanSetting;
 use Carbon\Carbon;
 
 /**
@@ -28,13 +29,13 @@ class LoanCalculator
         // every loan type except Solidarity Cash Assistance today.
         ?float $serviceChargePercent = null,
     ): array {
-        $serviceCharge = $serviceChargePercent ? round($principal * $serviceChargePercent / 100, 2) : 0.0;
+        $serviceCharge = $serviceChargePercent ? $this->money($principal * $serviceChargePercent / 100) : 0.0;
         $monthlyRate = $annualRatePercent / 100;
         $totalInterest = 0.0;
         $schedule = [];
 
         if ($interestMethod === 'Zero Interest') {
-            $flatMonthly = round($principal / $termMonths, 2);
+            $flatMonthly = $this->money($principal / $termMonths);
             $balance = $principal;
             for ($i = 1; $i <= $termMonths; $i++) {
                 $principalPortion = $i === $termMonths ? $balance : $flatMonthly;
@@ -54,9 +55,9 @@ class LoanCalculator
                 ];
             }
         } elseif ($interestMethod === 'Flat Interest') {
-            $totalInterest = round($principal * $monthlyRate * $termMonths, 2);
-            $monthlyPrincipal = round($principal / $termMonths, 2);
-            $monthlyInterest = round($totalInterest / $termMonths, 2);
+            $totalInterest = $this->money($principal * $monthlyRate * $termMonths);
+            $monthlyPrincipal = $this->money($principal / $termMonths);
+            $monthlyInterest = $this->money($totalInterest / $termMonths);
             $balance = $principal;
             for ($i = 1; $i <= $termMonths; $i++) {
                 $principalPortion = $i === $termMonths ? $balance : $monthlyPrincipal;
@@ -83,13 +84,13 @@ class LoanCalculator
                 : ($principal * $r * (1 + $r) ** $termMonths) / ((1 + $r) ** $termMonths - 1);
             $balance = $principal;
             for ($i = 1; $i <= $termMonths; $i++) {
-                $interestPortion = round($balance * $r, 2);
-                $principalPortion = round($payment - $interestPortion, 2);
+                $interestPortion = $this->money($balance * $r);
+                $principalPortion = $this->money($payment - $interestPortion);
                 if ($i === $termMonths) {
                     $principalPortion = $balance;
                 }
                 $beginningBalance = $balance;
-                $balance = max(0, round($balance - $principalPortion, 2));
+                $balance = max(0, $this->money($balance - $principalPortion));
                 $totalInterest += $interestPortion;
                 $schedule[] = [
                     'installment_number' => $i,
@@ -104,11 +105,11 @@ class LoanCalculator
                     'status' => 'Upcoming',
                 ];
             }
-            $totalInterest = round($totalInterest, 2);
+            $totalInterest = $this->money($totalInterest);
         }
 
-        $netProceeds = round($principal - $processingFee - $serviceCharge, 2);
-        $totalAmountPayable = round($principal + $totalInterest, 2);
+        $netProceeds = $this->money($principal - $processingFee - $serviceCharge);
+        $totalAmountPayable = $this->money($principal + $totalInterest);
         $monthlyAmortization = $schedule[0]['amount_due'] ?? 0;
         $maturityDate = $schedule !== [] ? $schedule[count($schedule) - 1]['due_date'] : $firstDueDate->toDateString();
 
@@ -123,5 +124,15 @@ class LoanCalculator
             'maturityDate' => $maturityDate,
             'schedule' => $schedule,
         ];
+    }
+
+    private function money(float $amount): float
+    {
+        return match (LoanSetting::current()->rounding_rule) {
+            'Nearest Peso' => round($amount, 0),
+            'Round Up' => ceil($amount * 100) / 100,
+            'Round Down' => floor($amount * 100) / 100,
+            default => round($amount, 2),
+        };
     }
 }

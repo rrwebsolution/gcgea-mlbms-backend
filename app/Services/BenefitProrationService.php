@@ -7,12 +7,15 @@ use App\Models\BenefitTypeProrationTier;
 use App\Models\Contribution;
 use App\Models\Deduction;
 use App\Models\Member;
+use App\Models\SystemSetting;
 
 /**
  * Prorates a BenefitType's payout by the member's paid contribution-months,
  * per GCGEA Board Resolution No. 24-2026 (Table 1 — Core Benefits, counted
- * against monthly dues; Table 2 — Cash Pabaon Program, counted against the
- * payroll Pabaon deduction, and whose 100% base escalates by fiscal year).
+ * against monthly dues; Table 2 — Cash Pabaon Program, counted against
+ * Cash Pabaon paid via either the payroll Pabaon deduction or a direct
+ * "Cash Pabaon" contribution entry, and whose 100% base escalates by fiscal
+ * year).
  *
  * A BenefitType with no proration_tiers rows is unaffected — callers should
  * fall back to its flat maximum_amount / manual entry, same as before this
@@ -26,18 +29,37 @@ class BenefitProrationService
      */
     public function monthsPaid(Member $member, string $countBasis): int
     {
+        $settings = SystemSetting::query()->where('section', 'contribution')->value('value') ?? [];
+
         if ($countBasis === 'pabaon') {
-            return Deduction::query()
+            $requiredPabaon = (float) ($settings['defaultCashPabaonContribution'] ?? 200);
+
+            // Cash Pabaon is paid through either channel — a payroll Pabaon
+            // deduction, or a direct "Cash Pabaon" contribution entry — so a
+            // period counts as paid if it's posted on either ledger.
+            $deductionPeriods = Deduction::query()
                 ->where('member_id', $member->id)
                 ->where('status', 'Posted')
                 ->whereHas('deductionType', fn ($q) => $q->where('code', 'pabaon'))
-                ->distinct('period')
-                ->count('period');
+                ->pluck('period');
+
+            $contributionPeriods = Contribution::query()
+                ->where('member_id', $member->id)
+                ->where('status', 'Posted')
+                ->where('contribution_type', 'Cash Pabaon')
+                ->where('amount', '>=', $requiredPabaon)
+                ->pluck('contribution_period');
+
+            return $deductionPeriods->merge($contributionPeriods)->unique()->count();
         }
+
+        $requiredDues = (float) ($settings['defaultMonthlyContribution'] ?? 100);
 
         return Contribution::query()
             ->where('member_id', $member->id)
             ->where('status', 'Posted')
+            ->where('contribution_type', 'Monthly Dues')
+            ->where('amount', '>=', $requiredDues)
             ->distinct('contribution_period')
             ->count('contribution_period');
     }
