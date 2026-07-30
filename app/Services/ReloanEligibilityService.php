@@ -36,7 +36,7 @@ class ReloanEligibilityService
             $this->maxConcurrentActiveLoansCheck($member, $previousLoan, $policy),
             $this->loanEligibility->amountOrNetPayCheck($member, $loanType, $requestedAmount),
             $this->loanEligibility->termCheck($loanType, $termMonths),
-            $this->loanEligibility->profileCompleteCheck($member),
+            ...$this->loanEligibility->profileChecks($member),
         ];
 
         $previousObligation = $this->previousObligation($previousLoan, $policy);

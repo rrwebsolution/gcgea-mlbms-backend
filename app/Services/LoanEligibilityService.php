@@ -30,7 +30,7 @@ class LoanEligibilityService
             $this->overdueLoanCheck($member),
             $this->amountOrNetPayCheck($member, $loanType, $requestedAmount),
             $this->termCheck($loanType, $termMonths),
-            $this->profileCompleteCheck($member),
+            ...$this->profileChecks($member),
         ];
     }
 
@@ -279,14 +279,19 @@ class LoanEligibilityService
         ];
     }
 
-    public function profileCompleteCheck(Member $member): array
+    public function profileChecks(Member $member): array
     {
         $profileComplete = $member->isProfileComplete();
 
         return [
-            'label' => 'Profile Complete',
-            'passed' => $profileComplete,
-            'detail' => $profileComplete ? 'Member profile is complete.' : 'Member profile is missing required information.',
+            [
+                'label' => 'Required Member Profile Fields Complete',
+                'passed' => $profileComplete,
+                'severity' => 'error',
+                'detail' => $profileComplete
+                    ? 'Member profile is complete.'
+                    : 'Member profile is missing required information.',
+            ],
         ];
     }
 
@@ -302,6 +307,7 @@ class LoanEligibilityService
             'Fully Paid Monthly Dues',
             'Monthly Dues Current',
             'No Overdue Loan',
+            'Required Member Profile Fields Complete',
         ];
         $failed = array_filter($checks, fn ($c) => ! $c['passed']);
 

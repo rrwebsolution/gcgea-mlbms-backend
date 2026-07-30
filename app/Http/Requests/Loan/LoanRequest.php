@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Loan;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -46,6 +47,27 @@ class LoanRequest extends FormRequest
             'termMonths' => [$req, 'integer', 'min:1'],
             'purpose' => [$req, 'string'],
             'paymentMethod' => [$req, Rule::in(['Payroll Deduction', 'Cash', 'Bank Transfer', 'Check'])],
+            'assignedOfficer' => [
+                $asDraft ? 'nullable' : 'required',
+                'string',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (! filled($value)) return;
+
+                    $qualified = User::query()
+                        ->where('full_name', $value)
+                        ->where('status', 'Active')
+                        ->where(function ($query) {
+                            $roleNames = ['Loan Officer', 'Senior Loan Officer', 'Assigned Loan Officer'];
+                            $query->whereHas('role', fn ($role) => $role->whereIn('name', $roleNames))
+                                ->orWhereHas('additionalRoles', fn ($role) => $role->whereIn('name', $roleNames));
+                        })
+                        ->exists();
+
+                    if (! $qualified) {
+                        $fail('Please select an active user with a Loan Officer role.');
+                    }
+                },
+            ],
             'requirements' => ['array'],
             'requirements.*.label' => ['required_with:requirements', 'string'],
             'requirements.*.completed' => ['boolean'],
@@ -56,5 +78,20 @@ class LoanRequest extends FormRequest
             'boardResolutionReference' => ['nullable', 'string'],
             'boardResolutionDocumentPath' => ['nullable', 'string'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if ($this->boolean('asDraft')) return;
+
+            $requirements = collect($this->input('requirements', []));
+            if ($requirements->isEmpty() || $requirements->contains(fn ($item) => ! ($item['completed'] ?? false))) {
+                $validator->errors()->add(
+                    'requirements',
+                    'Complete all required loan requirements before submitting. Supporting file uploads are optional.'
+                );
+            }
+        });
     }
 }

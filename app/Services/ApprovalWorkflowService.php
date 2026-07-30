@@ -197,8 +197,8 @@ class ApprovalWorkflowService
 
     /**
      * Cross-module "my approvals" queue. `$filters` accepts `tab` (pending|
-     * approved|rejected|returned|released), `subjectType` (members|loans|
-     * benefits), `page`, `perPage`.
+     * for-approval|approved|rejected|returned|released), `subjectType`
+     * (members|loans|benefits), `page`, `perPage`.
      */
     public function myApprovals(User $user, array $filters = []): LengthAwarePaginator
     {
@@ -207,12 +207,11 @@ class ApprovalWorkflowService
         $page = (int) ($filters['page'] ?? 1);
         $subjectClass = isset($filters['subjectType']) ? self::subjectClassForSlug($filters['subjectType']) : null;
 
-        if ($tab === 'pending') {
+        if ($tab === 'pending' || $tab === 'for-approval') {
             $eligibleStageIds = $this->eligibleStageIdsFor($user);
 
             $query = ApprovalInstance::query()
                 ->where('status', 'pending')
-                ->whereIn('current_stage_id', $eligibleStageIds)
                 ->with(['definition', 'currentStage', 'subject' => fn ($morphTo) => $morphTo->morphWith([
                     Loan::class => ['member'],
                     BenefitApplication::class => ['member'],
@@ -224,31 +223,102 @@ class ApprovalWorkflowService
                 $query->where('subject_type', $subjectClass);
             }
 
-            return $query->orderBy('started_at')->paginate($perPage, page: $page);
+            if ($tab === 'pending') {
+                $query->whereIn('current_stage_id', $eligibleStageIds);
+
+                return $query->orderBy('started_at')->paginate($perPage, page: $page);
+            }
+
+            // "For Approval": things currently sitting at an "approve" stage — whether I can
+            // act on them right now (I'm the assigned approver) or I routed them there
+            // myself earlier (e.g. a Loan Officer's reviewed item awaiting the Approving
+            // Officer's decision) and am just tracking whether it's been decided on yet.
+            $myReviewedSubjectKeys = ApprovalAction::query()
+                ->where('acted_by_user_id', $user->id)
+                ->whereIn('action', ['review', 'approve'])
+                ->get(['subject_type', 'subject_id'])
+                ->map(fn (ApprovalAction $a) => $a->subject_type.'#'.$a->subject_id)
+                ->unique();
+
+            $atApproveStage = $query
+                ->whereHas('currentStage', fn ($q) => $q->where('stage_type', 'approve'))
+                ->get()
+                ->filter(fn (ApprovalInstance $instance) =>
+                    in_array($instance->current_stage_id, $eligibleStageIds, true)
+                    || $myReviewedSubjectKeys->contains($instance->subject_type.'#'.$instance->subject_id)
+                )
+                ->sortBy('started_at')
+                ->values();
+
+            $page = max(1, $page);
+            $items = $atApproveStage->slice(($page - 1) * $perPage, $perPage)->values();
+
+            return new \Illuminate\Pagination\LengthAwarePaginator($items, $atApproveStage->count(), $perPage, $page);
         }
 
-        $actionMap = [
-            'approved' => ['review', 'approve'],
-            'rejected' => ['reject'],
-            'returned' => ['return'],
-            'released' => ['release'],
-        ];
-
-        $query = ApprovalAction::query()
+        // The approved/rejected/returned/released tabs bucket by what actually *happened*
+        // to a subject, not by the specific verb I used on it — a "review" or "approve"
+        // action isn't final on its own in a multi-stage workflow (e.g. Loan: Review ->
+        // Approve -> Release), so the same historical row needs to move from "Approved" to
+        // "Released" once the workflow actually finishes. Otherwise a Loan Officer's
+        // reviewed item would sit under "Approved" forever, even long after release.
+        $candidateQuery = ApprovalAction::query()
             ->where('acted_by_user_id', $user->id)
-            ->whereIn('action', $actionMap[$tab] ?? [])
+            ->whereIn('action', ['review', 'approve', 'reject', 'return', 'release'])
             ->with(['stage', 'subject' => fn ($morphTo) => $morphTo->morphWith([
-                Loan::class => ['member'],
-                BenefitApplication::class => ['member'],
-                AnnualBudget::class => [],
-                Disbursement::class => ['budgetItem'],
+                Loan::class => ['member', 'approvalInstance.currentStage'],
+                BenefitApplication::class => ['member', 'approvalInstance.currentStage'],
+                AnnualBudget::class => ['approvalInstance.currentStage'],
+                Disbursement::class => ['budgetItem', 'approvalInstance.currentStage'],
+                Member::class => ['approvalInstance.currentStage'],
             ])]);
 
         if ($subjectClass) {
-            $query->where('subject_type', $subjectClass);
+            $candidateQuery->where('subject_type', $subjectClass);
         }
 
-        return $query->orderByDesc('acted_at')->paginate($perPage, page: $page);
+        // Bucketing depends on each subject's *current* state, which can only be resolved
+        // in PHP (not a plain WHERE clause) — bounded rather than truly unbounded, but with
+        // plenty of headroom for this association's real volume.
+        $rows = $candidateQuery->orderByDesc('acted_at')->limit(1000)->get()
+            ->unique(fn (ApprovalAction $row) => $row->subject_type.'#'.$row->subject_id) // latest action per subject
+            ->filter(fn (ApprovalAction $row) => $this->resolvedBucketFor($row) === $tab)
+            ->values();
+
+        $page = max(1, $page);
+        $items = $rows->slice(($page - 1) * $perPage, $perPage)->values();
+
+        return new \Illuminate\Pagination\LengthAwarePaginator($items, $rows->count(), $perPage, $page);
+    }
+
+    /**
+     * Which of the four resolved tabs (approved/rejected/returned/released) a historical
+     * action of mine currently belongs under, based on the subject's actual present-day
+     * outcome — not just the verb this row recorded. Returns null while the subject is
+     * still genuinely awaiting a further decision (it belongs in Pending/For Approval
+     * tracking instead, not any of the four resolved tabs).
+     */
+    private function resolvedBucketFor(ApprovalAction $row): ?string
+    {
+        $instance = $row->subject?->approvalInstance;
+        if (! $instance) {
+            return null;
+        }
+
+        return match ($instance->status) {
+            'released' => 'released',
+            'rejected' => 'rejected',
+            'returned' => 'returned',
+            'approved' => 'approved', // terminal for single-stage workflows (no release stage after approve)
+            'pending' => match (true) {
+                $row->action === 'approve' => 'approved', // my own approval IS the decision — resolves immediately
+                $row->action === 'review'
+                    && $instance->currentStage
+                    && ! in_array($instance->currentStage->stage_type, ['review', 'approve'], true) => 'approved',
+                default => null, // still awaiting the next decision
+            },
+            default => null,
+        };
     }
 
     /**
@@ -260,7 +330,7 @@ class ApprovalWorkflowService
     {
         return $subject->approvalActions()
             ->whereNotIn('action', ['draft_created', 'draft_updated'])
-            ->with('actor')
+            ->with(['actor.role', 'stage.approverRole'])
             ->get();
     }
 

@@ -21,6 +21,11 @@ class ApprovalActionResource extends JsonResource
             'id' => (string) $this->id,
             'action' => $this->action,
             'performedBy' => $this->actor?->full_name ?? 'System',
+            // Prefer the role that actually authorized this specific action (the stage's
+            // assigned approver role) over the actor's primary role — a user can hold more
+            // than one role (e.g. also Treasurer), so this correctly labels which hat they
+            // were wearing for this action rather than always showing their primary title.
+            'performedByRole' => $this->stage?->approverRole?->name ?? $this->actor?->role?->name,
             'performedAt' => $this->acted_at?->toIso8601String(),
             'remarks' => $this->remarks,
         ];

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\User;
 
+use App\Support\SecurityPolicy;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,7 @@ class UserRequest extends FormRequest
             'username' => ['required', 'string', 'max:100', Rule::unique('users', 'username')->ignore($userId)],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
             'contactNumber' => ['nullable', 'string', 'max:20'],
-            'password' => [$userId ? 'nullable' : 'required', 'string', 'min:8'],
+            'password' => [$userId ? 'nullable' : 'required', 'string', ...SecurityPolicy::passwordRules()],
             'roleId' => ['required', 'exists:roles,id'],
             'additionalRoleIds' => ['array'],
             'additionalRoleIds.*' => ['exists:roles,id'],

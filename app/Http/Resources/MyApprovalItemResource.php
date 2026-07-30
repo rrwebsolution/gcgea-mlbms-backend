@@ -28,7 +28,33 @@ class MyApprovalItemResource extends JsonResource
     {
         $row = $this->resource;
         $subject = $row->subject;
-        $stage = $row instanceof ApprovalInstance ? $row->currentStage : $row->stage;
+
+        // For historical actions (approved/rejected/returned/released tabs), prefer the
+        // subject's *live* approval instance over the stage this particular action was
+        // performed at — otherwise an item a Loan Officer reviewed stays frozen at
+        // "Review" forever in their history, even after it has moved on to "For
+        // Approval" (or further). Only subjects still actively mid-workflow get this
+        // live override; a subject with no more pending instance (fully approved,
+        // rejected, released) correctly falls back to its frozen historical stage.
+        //
+        // "Still live" only applies to a "review" action waiting specifically on the very
+        // next decision (approve) — not on the workflow finishing entirely. An "approve"
+        // action IS that decision: it resolves immediately and never waits on whatever
+        // happens after it (e.g. the Treasurer eventually releasing the funds) — otherwise
+        // an Approving Officer's own "Approved" history would sit empty until release, even
+        // though they already made their call.
+        $liveInstance = $row instanceof ApprovalInstance ? null : $subject->approvalInstance;
+        $isStillLive = $liveInstance
+            && $liveInstance->status === 'pending'
+            && ! $row instanceof ApprovalInstance
+            && $row->action === 'review'
+            && $liveInstance->currentStage?->stage_type === 'approve';
+
+        $stage = match (true) {
+            $row instanceof ApprovalInstance => $row->currentStage,
+            $isStillLive => $liveInstance->currentStage,
+            default => $row->stage,
+        };
 
         return [
             'id' => (string) $row->id,
@@ -42,7 +68,11 @@ class MyApprovalItemResource extends JsonResource
             'currentStageType' => $stage?->stage_type,
             'submittedAt' => $row instanceof ApprovalInstance ? $row->started_at?->toIso8601String() : null,
             'actedAt' => $row instanceof ApprovalAction ? $row->acted_at?->toIso8601String() : null,
-            'status' => $row instanceof ApprovalInstance ? $row->status : $row->action,
+            'status' => match (true) {
+                $row instanceof ApprovalInstance => $row->status,
+                $isStillLive => 'pending',
+                default => $row->action,
+            },
         ];
     }
 

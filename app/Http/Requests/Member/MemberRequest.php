@@ -99,8 +99,60 @@ class MemberRequest extends FormRequest
             'beneficiaries.*.relationship' => [$req, 'string', 'max:100'],
             'beneficiaries.*.birthdate' => [$req, 'date'],
             'beneficiaries.*.contactNumber' => ['nullable', 'string', 'regex:'.$phRegex],
-            'beneficiaries.*.address' => ['nullable', 'string'],
+            'beneficiaries.*.address' => [$req, 'string'],
             'beneficiaries.*.sharePercentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if ($this->boolean('asDraft')) return;
+
+            $beneficiaries = collect($this->input('beneficiaries', []));
+            if ($beneficiaries->isEmpty()) {
+                $validator->errors()->add('beneficiaries', 'Add at least one qualified nuclear-family beneficiary.');
+                return;
+            }
+
+            $isMarried = $this->input('civilStatus') === 'Married';
+            $marriedRelationships = [
+                'Legal Spouse',
+                'Spouse',
+                'Legitimate Unmarried Child',
+                'Legally Adopted Unmarried Child',
+                'Unmarried Child',
+            ];
+            $unmarriedRelationships = [
+                'Living Father',
+                'Father',
+                'Living Mother',
+                'Mother',
+                'Single Brother',
+                'Single Sister',
+            ];
+            $allowed = $isMarried ? $marriedRelationships : $unmarriedRelationships;
+
+            foreach ($beneficiaries as $index => $beneficiary) {
+                if (! in_array($beneficiary['relationship'] ?? '', $allowed, true)) {
+                    $validator->errors()->add(
+                        "beneficiaries.{$index}.relationship",
+                        $isMarried
+                            ? 'Select a legal spouse or a legitimate/legally adopted unmarried child.'
+                            : 'Select a living parent or a single brother/sister.'
+                    );
+                }
+            }
+
+            $singleSiblingCount = $beneficiaries
+                ->whereIn('relationship', ['Single Brother', 'Single Sister'])
+                ->count();
+            if (! $isMarried && $singleSiblingCount > 3) {
+                $validator->errors()->add(
+                    'beneficiaries',
+                    'An unmarried member may register a maximum of three single brothers or sisters for the mortuary schedule.'
+                );
+            }
+        });
     }
 }

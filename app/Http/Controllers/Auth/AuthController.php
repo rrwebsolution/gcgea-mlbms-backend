@@ -10,21 +10,35 @@ use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Resources\UserResource;
 use App\Models\LoginHistory;
 use App\Models\User;
+use App\Support\SecurityPolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
     public function login(LoginRequest $request): UserResource|JsonResponse
     {
         $login = $request->string('usernameOrEmail')->toString();
+        $security = SecurityPolicy::settings();
+        $throttleKey = Str::lower($login).'|'.$request->ip();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, $security['maximumLoginAttempts'])) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+
+            return response()->json([
+                'message' => 'Too many failed login attempts. Try again in '.max(1, (int) ceil($seconds / 60)).' minute(s).',
+            ], 429);
+        }
 
         $user = User::where('username', $login)->orWhere('email', $login)->first();
 
         if (! $user) {
+            RateLimiter::hit($throttleKey, $security['lockoutDurationMinutes'] * 60);
             $credentialLabel = filter_var($login, FILTER_VALIDATE_EMAIL) ? 'email address' : 'username';
 
             return response()->json([
@@ -45,6 +59,14 @@ class AuthController extends Controller
         }
 
         if (! Hash::check($request->string('password')->toString(), $user->password)) {
+            RateLimiter::hit($throttleKey, $security['lockoutDurationMinutes'] * 60);
+            LoginHistory::create([
+                'user_id' => $user->id,
+                'login_at' => now(),
+                'ip_address' => $request->ip(),
+                'device' => $request->userAgent(),
+                'status' => 'Failed',
+            ]);
             return response()->json([
                 'message' => 'The password you entered is incorrect.',
                 'errors' => [
@@ -54,6 +76,7 @@ class AuthController extends Controller
         }
 
         Auth::login($user, $request->boolean('rememberMe'));
+        RateLimiter::clear($throttleKey);
         $request->session()->regenerate();
 
         $user->forceFill(['last_login_at' => now()])->save();

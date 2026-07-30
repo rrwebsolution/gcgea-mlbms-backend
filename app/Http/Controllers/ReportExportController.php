@@ -168,7 +168,7 @@ class ReportExportController extends Controller
 
     private function validatedReport(Request $request): array
     {
-        if (! $request->user()->hasPermission('reports.view')) {
+        if (! $request->user()->hasPermission('reports.export')) {
             abort(403, "You don't have permission to export reports.");
         }
 

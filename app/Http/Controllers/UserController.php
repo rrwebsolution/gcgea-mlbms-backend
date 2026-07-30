@@ -69,7 +69,8 @@ class UserController extends Controller
                 'contact_number' => $request->input('contactNumber'),
                 'password' => Hash::make($request->string('password')->toString()),
                 'role_id' => $request->input('roleId'),
-                'require_password_change' => $request->boolean('requirePasswordChange'),
+                'require_password_change' => $request->boolean('requirePasswordChange')
+                    || \App\Models\SystemSetting::security()['requirePasswordChangeOnFirstLogin'],
                 'remarks' => $request->input('remarks'),
                 'status' => $request->string('status')->toString(),
                 'email_verified_at' => now(),

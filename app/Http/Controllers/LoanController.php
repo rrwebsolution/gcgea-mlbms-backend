@@ -34,7 +34,7 @@ class LoanController extends Controller
 
     public function index(Request $request)
     {
-        $query = Loan::with(['member.office', 'loanType', 'previousLoan']);
+        $query = Loan::with(['member.office', 'loanType', 'previousLoan', 'documents']);
         $this->applyFilters($query, $request);
         $query->orderByDesc('created_at');
 
@@ -45,7 +45,7 @@ class LoanController extends Controller
 
     public function all(Request $request)
     {
-        $query = Loan::with(['member.office', 'loanType', 'previousLoan']);
+        $query = Loan::with(['member.office', 'loanType', 'previousLoan', 'documents']);
         $this->applyFilters($query, $request);
 
         return LoanResource::collection($query->orderBy('application_date', 'desc')->get());
@@ -53,7 +53,7 @@ class LoanController extends Controller
 
     public function show(Loan $loan)
     {
-        return new LoanResource($loan->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     public function schedule(Loan $loan)
@@ -66,7 +66,7 @@ class LoanController extends Controller
         $this->authorize('act', [$loan, 'review']);
         $this->workflow->act($loan, $request->user(), 'review', remarks: $request->input('remarks'));
 
-        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     public function approve(Request $request, Loan $loan)
@@ -80,7 +80,7 @@ class LoanController extends Controller
             $request->input('remarks'),
         );
 
-        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     public function reject(Request $request, Loan $loan)
@@ -89,7 +89,7 @@ class LoanController extends Controller
         $this->authorize('act', [$loan, 'reject']);
         $this->workflow->act($loan, $request->user(), 'reject', remarks: $request->string('remarks')->toString());
 
-        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     public function returnForRevision(Request $request, Loan $loan)
@@ -98,7 +98,7 @@ class LoanController extends Controller
         $this->authorize('act', [$loan, 'return']);
         $this->workflow->act($loan, $request->user(), 'return', remarks: $request->string('remarks')->toString());
 
-        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     public function release(LoanReleaseRequest $request, Loan $loan)
@@ -117,7 +117,7 @@ class LoanController extends Controller
             'outstanding_balance' => round($principalBalance + $interestBalance, 2),
         ], $request->input('remarks'));
 
-        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     public function store(LoanRequest $request, LoanCalculator $calculator, LoanEligibilityService $eligibilityService, LoanIncomeBracketService $bracketService, ReloanEligibilityService $reloanEligibilityService)
@@ -146,7 +146,7 @@ class LoanController extends Controller
                 'application_type' => 'new',
                 'status' => $asDraft ? 'Draft' : 'Submitted',
                 'draft_current_step' => $request->integer('draftCurrentStep', 1),
-                'assigned_officer' => $request->user()->full_name,
+                'assigned_officer' => $request->input('assignedOfficer'),
                 'requirements' => $request->input('requirements', []),
                 'created_by' => $request->user()->full_name,
             ]);
@@ -166,7 +166,7 @@ class LoanController extends Controller
             return $loan;
         });
 
-        return new LoanResource($loan->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     /**
@@ -197,6 +197,7 @@ class LoanController extends Controller
                 ...$computed['columns'],
                 'status' => $asDraft ? 'Draft' : 'Submitted',
                 'draft_current_step' => $request->integer('draftCurrentStep', $loan->draft_current_step ?? 1),
+                'assigned_officer' => $request->input('assignedOfficer', $loan->assigned_officer),
                 'requirements' => $request->input('requirements', []),
             ]);
 
@@ -213,7 +214,7 @@ class LoanController extends Controller
             }
         });
 
-        return new LoanResource($loan->load(['member.office', 'loanType', 'previousLoan']));
+        return new LoanResource($loan->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
     /**
@@ -255,6 +256,13 @@ class LoanController extends Controller
      */
     private function guardOverride(Request $request, array $eligibility): void
     {
+        // Drafts intentionally preserve incomplete or currently ineligible
+        // applications for later completion. Eligibility is enforced only
+        // when the user performs the final submission.
+        if ($request->boolean('asDraft')) {
+            return;
+        }
+
         $failedChecks = collect($eligibility)->filter(fn ($c) => ! $c['passed']);
         if ($failedChecks->isEmpty()) {
             return;
@@ -327,6 +335,14 @@ class LoanController extends Controller
         $loanType = $loanTypeId ? LoanType::find($loanTypeId) : null;
         $requestedAmount = $request->filled('requestedAmount') ? (float) $request->input('requestedAmount') : null;
         $termMonths = $request->filled('termMonths') ? (int) $request->input('termMonths') : null;
+
+        if ($loanType && $termMonths !== null && $termMonths > (int) $loanType->max_term_months) {
+            throw ValidationException::withMessages([
+                'termMonths' => [
+                    "Loan term cannot exceed the configured maximum of {$loanType->max_term_months} month(s) for {$loanType->name}.",
+                ],
+            ]);
+        }
 
         // Income-bracketed loan types (Resolution No. 24-2026, Solidarity Cash
         // Assistance Loan) cap the loanable amount by the member's net pay —

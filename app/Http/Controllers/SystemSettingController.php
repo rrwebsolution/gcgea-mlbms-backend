@@ -15,14 +15,17 @@ class SystemSettingController extends Controller
 
     public function index(Request $request)
     {
-        if (! $request->user()->hasPermission('settings.view')) {
-            abort(403, "You don't have permission to view system settings.");
-        }
-
         return response()->json(
             SystemSetting::query()->get()->mapWithKeys(
                 fn (SystemSetting $setting) => [$setting->section => $setting->value]
             )
+        );
+    }
+
+    public function appearance()
+    {
+        return response()->json(
+            SystemSetting::where('section', 'appearance')->first()?->value ?? []
         );
     }
 
@@ -91,11 +94,155 @@ class SystemSettingController extends Controller
             }
         }
 
+        if ($section === 'benefit') {
+            $request->validate([
+                'value.requireApproval' => ['required', 'boolean'],
+                'value.requireReleaseConfirmation' => ['required', 'boolean'],
+                'value.allowEligibilityOverride' => ['required', 'boolean'],
+                'value.defaultApprovalLimit' => ['required', 'numeric', 'min:0', 'max:999999999.99'],
+                'value.defaultFrequencyLimit' => ['required', 'string', 'max:100'],
+                'value.requireSupportingDocuments' => ['required', 'boolean'],
+                'value.allowMultiplePendingApplications' => ['required', 'boolean'],
+                'value.benefitYearResetMonth' => ['required', Rule::in([
+                    'January', 'February', 'March', 'April', 'May', 'June',
+                    'July', 'August', 'September', 'October', 'November', 'December',
+                ])],
+                'value.independentSpousalBenefitRights' => ['required', 'boolean'],
+            ]);
+        }
+
+        if ($section === 'notification') {
+            $request->validate([
+                'value.inAppNotifications' => ['required', 'boolean'],
+                'value.emailNotifications' => ['required', 'boolean'],
+                'value.smsNotifications' => ['required', 'boolean'],
+                'value.loanApprovalAlerts' => ['required', 'boolean'],
+                'value.loanDueDateAlerts' => ['required', 'boolean'],
+                'value.overdueLoanAlerts' => ['required', 'boolean'],
+                'value.benefitApprovalAlerts' => ['required', 'boolean'],
+                'value.contributionImportAlerts' => ['required', 'boolean'],
+                'value.incompleteProfileAlerts' => ['required', 'boolean'],
+                'value.userAccountAlerts' => ['required', 'boolean'],
+            ]);
+        }
+
+        if ($section === 'security') {
+            $request->validate([
+                'value.minimumPasswordLength' => ['required', 'integer', 'min:8', 'max:128'],
+                'value.requireUppercase' => ['required', 'boolean'],
+                'value.requireLowercase' => ['required', 'boolean'],
+                'value.requireNumber' => ['required', 'boolean'],
+                'value.requireSpecialCharacter' => ['required', 'boolean'],
+                'value.sessionTimeoutMinutes' => ['required', 'integer', 'min:5', 'max:1440'],
+                'value.maximumLoginAttempts' => ['required', 'integer', 'min:1', 'max:20'],
+                'value.lockoutDurationMinutes' => ['required', 'integer', 'min:1', 'max:1440'],
+                'value.requirePasswordChangeOnFirstLogin' => ['required', 'boolean'],
+                'value.enableTwoFactorAuth' => ['required', 'boolean'],
+                'value.auditSensitiveActions' => ['required', 'boolean'],
+                'value.confirmFinancialTransactions' => ['required', 'accepted'],
+            ]);
+        }
+
+        if ($section === 'reportTemplate') {
+            $request->validate([
+                'value.countryLine' => ['required', 'string', 'max:200'],
+                'value.organizationLine' => ['required', 'string', 'max:250'],
+                'value.acronymLine' => ['required', 'string', 'max:100'],
+                'value.addressLine' => ['required', 'string', 'max:500'],
+                'value.leftLogo' => ['required', 'string', 'max:3000000'],
+                'value.rightLogo' => ['required', 'string', 'max:3000000'],
+                'value.showGeneratedDate' => ['required', 'boolean'],
+                'value.categoryTemplates' => ['required', 'array', 'size:5'],
+            ]);
+
+            foreach (['member', 'contribution', 'loan', 'benefit', 'financial'] as $category) {
+                $this->validateReportDesign($request, "value.categoryTemplates.{$category}");
+                $request->validate(["value.categoryTemplates.{$category}.excelTemplate" => ['required', 'array']]);
+                $this->validateReportDesign($request, "value.categoryTemplates.{$category}.excelTemplate");
+            }
+        }
+
+        if ($section === 'backup') {
+            $request->validate([
+                'value.automaticBackup' => ['required', 'boolean'],
+                'value.backupFrequency' => ['required', Rule::in(['Hourly', 'Daily', 'Weekly', 'Monthly'])],
+                'value.retentionDays' => ['required', 'integer', 'min:1', 'max:3650'],
+                'value.includeAttachments' => ['required', 'boolean'],
+            ]);
+        }
+
+        if ($section === 'appearance') {
+            $color = 'regex:/^#[0-9A-Fa-f]{6}$/';
+            $request->validate([
+                'value.sidebarLogoUrl' => ['required', 'string', 'max:3000000'],
+                'value.sidebarFooterLeftLogoUrl' => ['required', 'string', 'max:3000000'],
+                'value.sidebarFooterLeftLogoLabel' => ['required', 'string', 'max:40'],
+                'value.sidebarFooterRightLogoUrl' => ['required', 'string', 'max:3000000'],
+                'value.sidebarFooterRightLogoLabel' => ['required', 'string', 'max:40'],
+                'value.primaryColor' => ['required', 'string', $color],
+                'value.secondaryColor' => ['required', 'string', $color],
+                'value.accentColor' => ['required', 'string', $color],
+                'value.sidebarColor' => ['required', 'string', $color],
+                'value.backgroundColor' => ['required', 'string', $color],
+                'value.progressColorStart' => ['required', 'string', $color],
+                'value.progressColorMiddle' => ['required', 'string', $color],
+                'value.progressColorEnd' => ['required', 'string', $color],
+                'value.baseFontSize' => ['required', 'integer', 'min:12', 'max:20'],
+                'value.fontWeight' => ['required', Rule::in([400, 500, 600, 700])],
+                'value.fontFamily' => ['required', Rule::in(['century-gothic', 'arial', 'calibri', 'verdana', 'geist', 'system', 'serif', 'monospace'])],
+                'value.fontStyle' => ['required', Rule::in(['normal', 'italic'])],
+                'value.borderRadius' => ['required', 'integer', 'min:0', 'max:32'],
+                'value.compactMode' => ['required', 'boolean'],
+                'value.sidebarStyle' => ['required', Rule::in(['expanded', 'collapsed'])],
+                'value.logoSize' => ['required', Rule::in(['small', 'medium', 'large'])],
+                'value.loginBackground' => ['required', Rule::in(['default', 'solid'])],
+            ]);
+        }
+
         $setting = SystemSetting::query()->updateOrCreate(
             ['section' => $section],
             ['value' => $data['value'], 'updated_by' => $request->user()->full_name]
         );
 
         return response()->json($setting->value);
+    }
+
+    private function validateReportDesign(Request $request, string $path): void
+    {
+        $color = 'regex:/^#[0-9A-Fa-f]{6}$/';
+        $request->validate([
+            $path => ['required', 'array'],
+            "{$path}.preset" => ['required', Rule::in(['classic', 'modern', 'compact'])],
+            "{$path}.primaryColor" => ['required', 'string', $color],
+            "{$path}.headerBackground" => ['required', 'string', $color],
+            "{$path}.bodyFontSize" => ['required', 'integer', 'min:7', 'max:14'],
+            "{$path}.bodyFontFamily" => ['required', Rule::in(['Arial', 'Georgia', 'Times New Roman', 'Courier New'])],
+            "{$path}.bodyFontWeight" => ['required', Rule::in(['normal', 'bold'])],
+            "{$path}.bodyFontStyle" => ['required', Rule::in(['normal', 'italic'])],
+            "{$path}.bodyTextDecoration" => ['required', Rule::in(['none', 'underline'])],
+            "{$path}.bodyTextColor" => ['required', 'string', $color],
+            "{$path}.bodyTextAlignment" => ['required', Rule::in(['left', 'center', 'right'])],
+            "{$path}.stripedRows" => ['required', 'boolean'],
+            "{$path}.showBorders" => ['required', 'boolean'],
+            "{$path}.titleAlignment" => ['required', Rule::in(['left', 'center'])],
+            "{$path}.orientation" => ['required', Rule::in(['auto', 'portrait', 'landscape'])],
+            "{$path}.paperSize" => ['required', Rule::in(['a4', 'letter', 'legal'])],
+            "{$path}.captionText" => ['nullable', 'string', 'max:1000'],
+            "{$path}.noteText" => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        foreach (['captionStyle', 'noteStyle'] as $style) {
+            $stylePath = "{$path}.{$style}";
+            $request->validate([
+                $stylePath => ['required', 'array'],
+                "{$stylePath}.fontFamily" => ['required', Rule::in(['Arial', 'Georgia', 'Times New Roman', 'Courier New'])],
+                "{$stylePath}.fontSize" => ['required', 'integer', 'min:7', 'max:24'],
+                "{$stylePath}.fontWeight" => ['required', Rule::in(['normal', 'bold'])],
+                "{$stylePath}.fontStyle" => ['required', Rule::in(['normal', 'italic'])],
+                "{$stylePath}.textDecoration" => ['required', Rule::in(['none', 'underline'])],
+                "{$stylePath}.textColor" => ['required', 'string', $color],
+                "{$stylePath}.textAlignment" => ['required', Rule::in(['left', 'center', 'right'])],
+            ]);
+        }
     }
 }

@@ -67,6 +67,7 @@ class LoanResource extends JsonResource
             'previousObligationSettlementMethod' => $this->previous_obligation_settlement_method,
             'previousObligationSettledAt' => $this->previous_obligation_settled_at?->toIso8601String(),
             'requirements' => $this->requirements ?? [],
+            'documents' => LoanDocumentResource::collection($this->whenLoaded('documents')),
 
             'releaseDate' => $this->release_date?->toDateString(),
             'releaseReferenceNumber' => $this->release_reference_number,

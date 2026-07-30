@@ -9,3 +9,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('drafts:cleanup-stale')->monthly();
+Schedule::call(fn () => app(\App\Services\SystemBackupService::class)->runAutomaticIfDue())
+    ->hourly()
+    ->name('system-backups')
+    ->withoutOverlapping();

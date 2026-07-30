@@ -48,6 +48,8 @@ class BenefitRequest extends FormRequest
             'requirements' => ['array'],
             'requirements.*.label' => ['required_with:requirements', 'string'],
             'requirements.*.completed' => ['boolean'],
+            'overrideEligibility' => ['sometimes', 'boolean'],
+            'overrideReason' => ['nullable', 'required_if:overrideEligibility,true', 'string', 'max:1000'],
             'draftCurrentStep' => ['nullable', 'integer', 'min:1'],
         ];
     }

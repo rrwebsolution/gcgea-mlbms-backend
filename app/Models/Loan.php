@@ -91,6 +91,11 @@ class Loan extends Model
         return $this->hasMany(LoanAmortizationEntry::class)->orderBy('installment_number');
     }
 
+    public function documents(): HasMany
+    {
+        return $this->hasMany(LoanDocument::class);
+    }
+
     public function approvalHistory(): HasMany
     {
         return $this->hasMany(LoanApprovalHistory::class)->orderBy('performed_at');

@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'permission' => EnsurePermission::class,
             'password.changed' => RequirePasswordChange::class,
+            'security.timeout' => \App\Http\Middleware\EnforceSecuritySessionTimeout::class,
             'maintenance' => EnsureNotInMaintenanceMode::class,
         ]);
     })

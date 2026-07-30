@@ -12,6 +12,7 @@ use App\Models\MemberImportBatch;
 use App\Models\PayrollDeductionHeader;
 use App\Models\PayrollImportBatch;
 use App\Models\User;
+use App\Models\SystemSetting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -21,8 +22,12 @@ use Illuminate\Support\Str;
  */
 class AuditLogService
 {
-    public function record(User $actor, Model $subject, string $action, ?string $remarks = null, ?string $status = null): AuditLog
+    public function record(User $actor, Model $subject, string $action, ?string $remarks = null, ?string $status = null): ?AuditLog
     {
+        if (! SystemSetting::security()['auditSensitiveActions']) {
+            return null;
+        }
+
         return AuditLog::create([
             'date_time' => now(),
             'user_id' => $actor->id,

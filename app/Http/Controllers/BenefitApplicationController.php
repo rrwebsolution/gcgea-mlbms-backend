@@ -7,6 +7,7 @@ use App\Http\Resources\BenefitApplicationResource;
 use App\Models\BenefitApplication;
 use App\Models\BenefitType;
 use App\Models\Member;
+use App\Models\SystemSetting;
 use App\Services\ApprovalWorkflowService;
 use App\Services\AuditLogService;
 use App\Services\BenefitEligibilityService;
@@ -107,6 +108,7 @@ class BenefitApplicationController extends Controller
 
         $member = Member::findOrFail($request->input('memberId'));
         $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
+        $this->validateSubmissionPolicy($request, $computed);
 
         $benefit = DB::transaction(function () use ($request, $member, $asDraft, $computed) {
             $benefit = BenefitApplication::create([
@@ -152,6 +154,7 @@ class BenefitApplicationController extends Controller
 
         $member = Member::findOrFail($request->input('memberId'));
         $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
+        $this->validateSubmissionPolicy($request, $computed);
 
         DB::transaction(function () use ($request, $member, $asDraft, $computed, $benefit) {
             $benefit->update([
@@ -235,6 +238,35 @@ class BenefitApplicationController extends Controller
                 'eligibility_result' => $eligibilityResult,
             ],
         ];
+    }
+
+    private function validateSubmissionPolicy(BenefitRequest $request, array &$computed): void
+    {
+        if ($request->boolean('asDraft')) {
+            return;
+        }
+
+        $settings = SystemSetting::benefit();
+        $requirements = collect($request->input('requirements', []));
+        if ($settings['requireSupportingDocuments'] && $requirements->contains(fn ($item) => ! ($item['completed'] ?? false))) {
+            abort(422, 'Complete all required supporting documents before submitting this benefit application.');
+        }
+
+        if (($computed['columns']['eligibility_result'] ?? null) !== 'Not Eligible') {
+            return;
+        }
+
+        $canOverride = $settings['allowEligibilityOverride']
+            && $request->boolean('overrideEligibility')
+            && $request->user()->hasPermission('benefits.override_eligibility')
+            && filled($request->input('overrideReason'));
+
+        if (! $canOverride) {
+            abort(422, 'This benefit application is not eligible and cannot be submitted without an authorized override.');
+        }
+
+        $computed['columns']['eligibility_result'] = 'Eligible with Override';
+        $computed['columns']['remarks'] = 'Eligibility override: '.$request->string('overrideReason')->toString();
     }
 
     private function applyFilters(Builder $query, Request $request): void

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Support\SecurityPolicy;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ResetPasswordRequest extends FormRequest
@@ -19,7 +20,7 @@ class ResetPasswordRequest extends FormRequest
         return [
             'token' => ['required', 'string'],
             'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', ...SecurityPolicy::passwordRules()],
             'confirmPassword' => ['required', 'string', 'same:password'],
         ];
     }

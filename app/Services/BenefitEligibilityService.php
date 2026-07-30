@@ -6,6 +6,7 @@ use App\Models\BenefitApplication;
 use App\Models\BenefitType;
 use App\Models\Loan;
 use App\Models\Member;
+use App\Models\SystemSetting;
 use Carbon\Carbon;
 
 /**
@@ -25,6 +26,7 @@ class BenefitEligibilityService
     public function evaluate(Member $member, BenefitType $benefitType, float $requestedAmount, ?string $beneficiaryOrRecipient = null): array
     {
         $checks = [];
+        $settings = SystemSetting::benefit();
         $isCashPabaonDeathClaim = $benefitType->name === self::CASH_PABAON_PROGRAM_NAME && $member->membership_status === 'Deceased';
 
         $checks[] = [
@@ -47,6 +49,7 @@ class BenefitEligibilityService
         $priorBenefitCount = BenefitApplication::where('member_id', $member->id)
             ->where('benefit_type_id', $benefitType->id)
             ->whereIn('status', ['Released', 'Completed'])
+            ->whereDate('release_date', '>=', $this->benefitYearStartedAt($settings['benefitYearResetMonth']))
             ->count();
         $mentionsYear = str_contains(strtolower($benefitType->frequency_limit), 'year');
         $frequencyPassed = $priorBenefitCount === 0 || ($mentionsYear ? $priorBenefitCount < 2 : $priorBenefitCount === 0);
@@ -62,10 +65,12 @@ class BenefitEligibilityService
             ->exists();
         $checks[] = [
             'label' => 'No Duplicate Pending Application',
-            'passed' => ! $hasPendingApplication,
-            'detail' => $hasPendingApplication
+            'passed' => $settings['allowMultiplePendingApplications'] || ! $hasPendingApplication,
+            'detail' => $settings['allowMultiplePendingApplications']
+                ? 'Multiple pending applications are allowed by Benefit Settings.'
+                : ($hasPendingApplication
                 ? 'Member already has a pending application for this benefit type.'
-                : 'No pending application of this type.',
+                : 'No pending application of this type.'),
         ];
 
         $profileComplete = $member->isProfileComplete();
@@ -221,5 +226,13 @@ class BenefitEligibilityService
     private function monthsBetween(Carbon $start, Carbon $end): int
     {
         return ($end->year - $start->year) * 12 + ($end->month - $start->month);
+    }
+
+    private function benefitYearStartedAt(string $month): Carbon
+    {
+        $monthNumber = Carbon::parse("1 {$month}")->month;
+        $start = now()->startOfYear()->month($monthNumber)->startOfMonth();
+
+        return $start->isFuture() ? $start->subYear() : $start;
     }
 }

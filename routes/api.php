@@ -18,6 +18,7 @@ use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\DeductionTypeController;
 use App\Http\Controllers\EmploymentStatusController;
 use App\Http\Controllers\LoanController;
+use App\Http\Controllers\LoanDocumentController;
 use App\Http\Controllers\LegacyLoanImportController;
 use App\Http\Controllers\LoanImportHistoryController;
 use App\Http\Controllers\LoanPaymentController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\RemittanceBreakdownReportController;
 use App\Http\Controllers\SystemSettingController;
+use App\Http\Controllers\SystemBackupController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -43,19 +45,24 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'security.timeout'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/change-password', [AuthController::class, 'changePassword']);
     });
 });
 
-Route::middleware(['auth:sanctum', 'password.changed', 'maintenance'])->group(function () {
+Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'maintenance'])->group(function () {
     Route::post('/report-exports/pdf', [ReportExportController::class, 'pdf']);
     Route::post('/report-exports/excel', [ReportExportController::class, 'excel']);
 
     Route::get('/system-settings', [SystemSettingController::class, 'index']);
+    Route::get('/appearance-settings', [SystemSettingController::class, 'appearance']);
     Route::put('/system-settings/{section}', [SystemSettingController::class, 'update']);
+    Route::get('/system-backups', [SystemBackupController::class, 'index']);
+    Route::post('/system-backups', [SystemBackupController::class, 'store']);
+    Route::get('/system-backups/{backup}/download', [SystemBackupController::class, 'download']);
+    Route::delete('/system-backups/{backup}', [SystemBackupController::class, 'destroy']);
     Route::get('/employment-statuses', [EmploymentStatusController::class, 'index']);
     Route::post('/employment-statuses', [EmploymentStatusController::class, 'store']);
     Route::put('/employment-statuses/{employmentStatus}', [EmploymentStatusController::class, 'update']);
@@ -204,6 +211,7 @@ Route::middleware(['auth:sanctum', 'password.changed', 'maintenance'])->group(fu
     Route::get('/loans/all', [LoanController::class, 'all']);
     Route::get('/loans', [LoanController::class, 'index']);
     Route::post('/loans', [LoanController::class, 'store']);
+    Route::post('/loans/{loan}/documents', [LoanDocumentController::class, 'store']);
     Route::get('/loans/{loan}', [LoanController::class, 'show']);
     Route::put('/loans/{loan}', [LoanController::class, 'update']);
     Route::delete('/loans/{loan}', [LoanController::class, 'destroy']);

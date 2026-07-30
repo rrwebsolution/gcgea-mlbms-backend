@@ -85,7 +85,7 @@ class LegacyLoanWorkbookImportService
     public function commit(string $path, string $period, array $excludedRows, array $resolvedMatches, $user, ?string $originalFilename = null): array
     {
         $preview = $this->preview($path, $period);
-        $loanType = LoanType::query()->whereRaw('LOWER(name) LIKE ?', ['%solidarity%cash%assistance%'])->firstOrFail();
+        $loanType = $this->resolveSolidarityCashAssistanceLoanType();
         $created = 0;
         $skipped = 0;
         $errors = [];
@@ -136,6 +136,7 @@ class LegacyLoanWorkbookImportService
                     $start = Carbon::createFromFormat('Y-m', $row['loanStart'])->startOfMonth();
                     $importPeriod = $row['lastPaymentMonth'] ?: $period;
                     $asOf = Carbon::createFromFormat('Y-m', $importPeriod)->endOfMonth();
+                    $periodStart = Carbon::createFromFormat('Y-m', $importPeriod)->startOfMonth();
                     $existingLoan = Loan::query()
                         ->where('member_id', $row['memberId'])
                         ->where('legacy_loan_identity', $row['identity'])
@@ -220,7 +221,7 @@ class LegacyLoanWorkbookImportService
 
                     for ($installment = 1; $installment <= $term; $installment++) {
                         $due = $start->copy()->addMonths($installment);
-                        $isPast = $due->lte($asOf);
+                        $isPast = $due->lt($periodStart);
                         $principalPart = round($row['principal'] / $term, 2);
                         $interestPart = round($row['interest'] / $term, 2);
                         $loan->schedule()->create([
@@ -408,6 +409,7 @@ class LegacyLoanWorkbookImportService
 
     private function postMonthlyContinuation(Loan $loan, array $row, string $importPeriod, Carbon $asOf, $user): void
     {
+        $periodStart = Carbon::createFromFormat('Y-m', $importPeriod)->startOfMonth();
         $latestPeriod = $loan->payments()
             ->where('payroll_reference', 'like', 'LEGACY-%')
             ->pluck('payroll_reference')
@@ -457,9 +459,26 @@ class LegacyLoanWorkbookImportService
             'legacy_import_fingerprint' => $row['fingerprint'],
         ]);
         $loan->schedule()
-            ->whereDate('due_date', '<=', $asOf)
+            ->whereDate('due_date', '<', $periodStart)
             ->where('status', '!=', 'Paid')
             ->update(['status' => 'Paid', 'amount_paid' => DB::raw('amount_due')]);
+    }
+
+    /**
+     * The legacy import always assigns loans to the Solidarity Cash Assistance Loan type.
+     * If it's missing (e.g. after a database reset that wasn't reseeded), recreate it from
+     * the seeder's canonical Board Resolution No. 24-2026 defaults instead of failing the import.
+     */
+    private function resolveSolidarityCashAssistanceLoanType(): LoanType
+    {
+        $loanType = LoanType::query()->whereRaw('LOWER(name) LIKE ?', ['%solidarity%cash%assistance%'])->first();
+        if ($loanType) {
+            return $loanType;
+        }
+
+        app(\Database\Seeders\LoanTypeSeeder::class)->run();
+
+        return LoanType::query()->whereRaw('LOWER(name) LIKE ?', ['%solidarity%cash%assistance%'])->firstOrFail();
     }
 
     private function normalizeName(string $value): string
