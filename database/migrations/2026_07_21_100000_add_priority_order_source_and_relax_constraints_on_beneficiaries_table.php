@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -12,16 +11,25 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('beneficiaries', function (Blueprint $table) {
-            $table->unsignedTinyInteger('priority_order')->nullable()->after('share_percentage');
-            $table->string('source')->default('manual')->after('priority_order');
-        });
+        if (! Schema::hasColumn('beneficiaries', 'priority_order')) {
+            Schema::table('beneficiaries', function (Blueprint $table) {
+                $table->unsignedTinyInteger('priority_order')->nullable()->after('share_percentage');
+            });
+        }
+
+        if (! Schema::hasColumn('beneficiaries', 'source')) {
+            Schema::table('beneficiaries', function (Blueprint $table) {
+                $table->string('source')->default('manual')->after('priority_order');
+            });
+        }
 
         // birthdate/relationship are NOT NULL, but the source workbook's
         // "Name of Dependent/s and Beneficiary/ies" columns give only a name
         // — no doctrine/dbal installed, so raw SQL rather than ->change().
-        DB::statement('ALTER TABLE beneficiaries ALTER COLUMN birthdate DROP NOT NULL');
-        DB::statement('ALTER TABLE beneficiaries ALTER COLUMN relationship DROP NOT NULL');
+        Schema::table('beneficiaries', function (Blueprint $table) {
+            $table->date('birthdate')->nullable()->change();
+            $table->string('relationship')->nullable()->change();
+        });
     }
 
     /**
@@ -29,11 +37,20 @@ return new class extends Migration
      */
     public function down(): void
     {
-        DB::statement('ALTER TABLE beneficiaries ALTER COLUMN relationship SET NOT NULL');
-        DB::statement('ALTER TABLE beneficiaries ALTER COLUMN birthdate SET NOT NULL');
-
         Schema::table('beneficiaries', function (Blueprint $table) {
-            $table->dropColumn(['priority_order', 'source']);
+            $table->string('relationship')->nullable(false)->change();
+            $table->date('birthdate')->nullable(false)->change();
         });
+
+        $columns = array_values(array_filter(
+            ['priority_order', 'source'],
+            fn (string $column): bool => Schema::hasColumn('beneficiaries', $column),
+        ));
+
+        if ($columns !== []) {
+            Schema::table('beneficiaries', function (Blueprint $table) use ($columns) {
+                $table->dropColumn($columns);
+            });
+        }
     }
 };

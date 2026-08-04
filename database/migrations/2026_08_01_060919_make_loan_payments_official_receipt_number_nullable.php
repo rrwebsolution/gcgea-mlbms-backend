@@ -1,7 +1,8 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Payments without a physical receipt on hand (e.g. payroll-deducted) now get an
@@ -12,11 +13,15 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('ALTER TABLE loan_payments ALTER COLUMN official_receipt_number DROP NOT NULL');
+        Schema::table('loan_payments', function (Blueprint $table) {
+            $table->string('official_receipt_number')->nullable()->change();
+        });
     }
 
     public function down(): void
     {
-        DB::statement('ALTER TABLE loan_payments ALTER COLUMN official_receipt_number SET NOT NULL');
+        Schema::table('loan_payments', function (Blueprint $table) {
+            $table->string('official_receipt_number')->nullable(false)->change();
+        });
     }
 };
