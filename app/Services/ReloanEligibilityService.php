@@ -121,18 +121,22 @@ class ReloanEligibilityService
 
         if ($policy->reloan_min_paid_installments !== null) {
             $monthlyAmortization = max(0.01, (float) $previousLoan->monthly_amortization);
-            $paidInstallments = $previousLoan->payments()
+            $fullyPaidScheduleInstallments = $previousLoan->schedule()
+                ->where('status', 'Paid')
+                ->count();
+            $paidAmount = (float) $previousLoan->payments()
                 ->where('status', 'Posted')
                 ->get()
-                ->groupBy(fn ($payment) => $payment->payment_date?->format('Y-m'))
-                ->filter(fn ($payments) => $payments->sum(
-                    fn ($payment) => (float) $payment->principal_portion + (float) $payment->interest_portion
-                ) >= $monthlyAmortization - 0.01)
-                ->count();
+                ->sum(fn ($payment) => (float) $payment->principal_portion + (float) $payment->interest_portion);
+            $installmentsCoveredByPayments = (int) floor(($paidAmount + 0.01) / $monthlyAmortization);
+            $paidInstallments = min(
+                (int) $previousLoan->term_months,
+                max($fullyPaidScheduleInstallments, $installmentsCoveredByPayments)
+            );
             $checks[] = [
                 'label' => 'Six-Month Previous Loan Payment',
                 'passed' => $paidInstallments >= $policy->reloan_min_paid_installments,
-                'detail' => "{$paidInstallments} fully paid loan month(s) recorded; {$policy->reloan_min_paid_installments} required before reloan.",
+                'detail' => "{$paidInstallments} fully paid loan installment(s) recorded; {$policy->reloan_min_paid_installments} required before reloan.",
             ];
         }
 

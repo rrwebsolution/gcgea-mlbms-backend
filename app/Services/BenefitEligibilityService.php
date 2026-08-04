@@ -90,6 +90,18 @@ class BenefitEligibilityService
             $checks = array_merge($checks, $this->cashPabaonChecks($member, $beneficiaryOrRecipient));
         }
 
+        if (($settings['requireRetiredStatusForRetirementBenefit'] ?? true)
+            && $benefitType->name === 'Retirement and Separation Benefit') {
+            $isRetired = $member->retiree_status === 'Retired';
+            $checks[] = [
+                'label' => 'Retired Status Required',
+                'passed' => $isRetired,
+                'detail' => $isRetired
+                    ? 'Member Retiree Status is Retired.'
+                    : "Member Retiree Status is {$member->retiree_status}; this benefit requires Retired status.",
+            ];
+        }
+
         return $checks;
     }
 

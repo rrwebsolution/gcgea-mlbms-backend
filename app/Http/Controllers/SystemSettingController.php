@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class SystemSettingController extends Controller
@@ -27,6 +28,19 @@ class SystemSettingController extends Controller
         return response()->json(
             SystemSetting::where('section', 'appearance')->first()?->value ?? []
         );
+    }
+
+    /** Database size (data + indexes) against the hosting plan's fixed storage cap, for the sidebar's usage indicator. */
+    public function storageUsage()
+    {
+        $totalBytes = 320 * 1024 * 1024 * 1024;
+
+        $usedBytes = (int) DB::selectOne('select pg_database_size(current_database()) as bytes')->bytes;
+
+        return response()->json([
+            'usedBytes' => $usedBytes,
+            'totalBytes' => $totalBytes,
+        ]);
     }
 
     public function update(Request $request, string $section)
@@ -58,6 +72,7 @@ class SystemSettingController extends Controller
                     'July', 'August', 'September', 'October', 'November', 'December',
                 ])],
                 'value.recordsPerPage' => ['required', 'integer', Rule::in([10, 25, 50, 100])],
+                'value.membershipRegistrationFee' => ['required', 'numeric', 'min:0', 'max:100000'],
                 'value.maintenanceMode' => ['required', 'boolean'],
                 'value.enableAlertTranslations' => ['required', 'boolean'],
             ]);
@@ -81,7 +96,7 @@ class SystemSettingController extends Controller
         }
 
         if ($section === 'numbering') {
-            foreach (['member', 'loan', 'loanPayment', 'contribution', 'benefit', 'benefitRelease'] as $type) {
+            foreach (['member', 'loan', 'loanPayment', 'officialReceipt', 'contribution', 'benefit', 'benefitRelease'] as $type) {
                 $request->validate([
                     "value.{$type}" => ['required', 'array'],
                     "value.{$type}.prefix" => ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/'],
@@ -103,6 +118,7 @@ class SystemSettingController extends Controller
                 'value.defaultFrequencyLimit' => ['required', 'string', 'max:100'],
                 'value.requireSupportingDocuments' => ['required', 'boolean'],
                 'value.allowMultiplePendingApplications' => ['required', 'boolean'],
+                'value.requireRetiredStatusForRetirementBenefit' => ['required', 'boolean'],
                 'value.benefitYearResetMonth' => ['required', Rule::in([
                     'January', 'February', 'March', 'April', 'May', 'June',
                     'July', 'August', 'September', 'October', 'November', 'December',

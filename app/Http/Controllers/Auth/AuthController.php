@@ -67,6 +67,7 @@ class AuthController extends Controller
                 'device' => $request->userAgent(),
                 'status' => 'Failed',
             ]);
+
             return response()->json([
                 'message' => 'The password you entered is incorrect.',
                 'errors' => [
@@ -101,9 +102,19 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logged out.']);
     }
 
-    public function me(Request $request): UserResource
+    /**
+     * Session-restore check the frontend calls on every page load, including while logged
+     * out (e.g. sitting on the login page) — so a guest is the normal case, not an error.
+     * Answers 200+null rather than a 401 for that case; see the route definition for why.
+     */
+    public function me(Request $request): UserResource|JsonResponse
     {
-        return new UserResource($request->user());
+        $user = $request->user();
+
+        // Not response()->json(null) — Symfony's JsonResponse null-coalesces a null $data to
+        // an empty ArrayObject before encoding, so the body would silently come out as "{}"
+        // instead of a value the frontend can tell apart from a real (if sparse) user object.
+        return $user ? new UserResource($user) : response()->json(false);
     }
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse

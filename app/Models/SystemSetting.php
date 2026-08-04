@@ -23,6 +23,7 @@ class SystemSetting extends Model
             'defaultFrequencyLimit' => 'Once per year',
             'requireSupportingDocuments' => true,
             'allowMultiplePendingApplications' => false,
+            'requireRetiredStatusForRetirementBenefit' => true,
             'benefitYearResetMonth' => 'January',
             'independentSpousalBenefitRights' => true,
         ], self::query()->where('section', 'benefit')->first()?->value ?? []);

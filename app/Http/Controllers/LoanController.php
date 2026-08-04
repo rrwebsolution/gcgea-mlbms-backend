@@ -13,10 +13,10 @@ use App\Models\LoanType;
 use App\Models\Member;
 use App\Services\ApprovalWorkflowService;
 use App\Services\AuditLogService;
+use App\Services\DocumentNumberService;
 use App\Services\LoanCalculator;
 use App\Services\LoanEligibilityService;
 use App\Services\LoanIncomeBracketService;
-use App\Services\DocumentNumberService;
 use App\Services\ReloanEligibilityService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
@@ -101,21 +101,60 @@ class LoanController extends Controller
         return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
 
-    public function release(LoanReleaseRequest $request, Loan $loan)
+    /**
+     * first_due_date/maturity_date/schedule are first computed back in
+     * computeLoanFields() (store()/update()), anchored on the *application*
+     * date — necessary then, since that's the only date available for the
+     * eligibility/preview computation while the loan is still being reviewed.
+     * But a borrower doesn't start owing payments until the money is actually
+     * in hand, and approval can take anywhere from days to weeks — so on
+     * release, re-anchor the whole schedule to the real release date instead
+     * of leaving it dated from whenever the application was originally typed
+     * up. The peso amounts (principal/interest/monthly amortization) are
+     * unaffected by which date the schedule starts from, so only the dates
+     * are regenerated here — the stored totals stay as computed at
+     * application time.
+     */
+    public function release(LoanReleaseRequest $request, LoanCalculator $calculator, Loan $loan)
     {
         $this->authorize('act', [$loan, 'release']);
         $principalBalance = max(0, round((float) $loan->principal, 2));
         $interestBalance = max(0, round((float) $loan->total_interest, 2));
-        $this->workflow->act($loan, $request->user(), 'release', [
-            'release_date' => now(),
-            'release_reference_number' => $request->string('releaseReferenceNumber')->toString(),
-            'release_method' => $request->string('releaseMethod')->toString(),
-            'actual_released_amount' => $request->input('actualReleasedAmount'),
-            'release_remarks' => $request->input('releaseRemarks'),
-            'principal_balance' => $principalBalance,
-            'interest_balance' => $interestBalance,
-            'outstanding_balance' => round($principalBalance + $interestBalance, 2),
-        ], $request->input('remarks'));
+
+        $releaseDate = now();
+        // addMonthNoOverflow(), not addMonth() — see LoanCalculator's docblock: a plain
+        // addMonth() from a 29th/30th/31st release date overflows into the following
+        // month instead of clamping (e.g. Jan 31 -> Mar 3, skipping February entirely).
+        $firstDueDate = $releaseDate->copy()->addMonthNoOverflow();
+        $recomputed = $calculator->compute(
+            (float) $loan->principal,
+            (float) $loan->interest_rate,
+            (int) $loan->term_months,
+            (float) $loan->processing_fee,
+            $loan->loanType->interest_method,
+            $firstDueDate,
+            $loan->loanType->service_charge_percent !== null ? (float) $loan->loanType->service_charge_percent : null,
+        );
+
+        DB::transaction(function () use ($request, $loan, $recomputed, $firstDueDate, $releaseDate, $principalBalance, $interestBalance) {
+            $loan->schedule()->delete();
+            foreach ($recomputed['schedule'] as $entry) {
+                $loan->schedule()->create($entry);
+            }
+
+            $this->workflow->act($loan, $request->user(), 'release', [
+                'release_date' => $releaseDate,
+                'release_reference_number' => $request->string('releaseReferenceNumber')->toString(),
+                'release_method' => $request->string('releaseMethod')->toString(),
+                'actual_released_amount' => $request->input('actualReleasedAmount'),
+                'release_remarks' => $request->input('releaseRemarks'),
+                'principal_balance' => $principalBalance,
+                'interest_balance' => $interestBalance,
+                'outstanding_balance' => round($principalBalance + $interestBalance, 2),
+                'first_due_date' => $firstDueDate,
+                'maturity_date' => $recomputed['maturityDate'],
+            ], $request->input('remarks'));
+        });
 
         return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
     }
@@ -276,7 +315,7 @@ class LoanController extends Controller
             abort(422, $failedChecks->first()['detail']);
         }
 
-        if (! \App\Models\LoanSetting::current()->allow_eligibility_override) {
+        if (! LoanSetting::current()->allow_eligibility_override) {
             abort(422, 'Loan eligibility overrides are disabled in Loan Settings.');
         }
         if (! $request->user()->hasPermission('loans.override_eligibility')) {
@@ -328,7 +367,8 @@ class LoanController extends Controller
         ?Loan $existingLoan = null
     ): array {
         $applicationDate = now();
-        $firstDueDate = $applicationDate->copy()->addMonth();
+        // addMonthNoOverflow() — see the note in release() above.
+        $firstDueDate = $applicationDate->copy()->addMonthNoOverflow();
         $isReloan = $existingLoan?->application_type === 'reloan';
 
         $loanTypeId = $request->input('loanTypeId');

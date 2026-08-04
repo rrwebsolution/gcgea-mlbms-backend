@@ -1,11 +1,9 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
-use App\Http\Controllers\AnnualBudgetController;
-use App\Http\Controllers\DisbursementController;
-use App\Http\Controllers\MonthlyDisbursementReportController;
-use App\Http\Controllers\Admin\WorkflowDefinitionController;
 use App\Http\Controllers\Admin\MembershipApprovalSettingController;
+use App\Http\Controllers\Admin\WorkflowDefinitionController;
+use App\Http\Controllers\AnnualBudgetController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BenefitApplicationController;
@@ -16,27 +14,31 @@ use App\Http\Controllers\ContributionFundController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\DeductionTypeController;
+use App\Http\Controllers\DisbursementController;
 use App\Http\Controllers\EmploymentStatusController;
+use App\Http\Controllers\GlobalSearchController;
+use App\Http\Controllers\LegacyLoanImportController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\LoanDocumentController;
-use App\Http\Controllers\LegacyLoanImportController;
 use App\Http\Controllers\LoanImportHistoryController;
 use App\Http\Controllers\LoanPaymentController;
 use App\Http\Controllers\LoanSettingsController;
 use App\Http\Controllers\LoanTypeController;
+use App\Http\Controllers\LookupsController;
 use App\Http\Controllers\ManualPayrollDeductionController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\MemberDocumentController;
 use App\Http\Controllers\MemberImportController;
+use App\Http\Controllers\MonthlyDisbursementReportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OfficeController;
 use App\Http\Controllers\PayrollImportController;
 use App\Http\Controllers\ReloanController;
-use App\Http\Controllers\RoleController;
-use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\RemittanceBreakdownReportController;
-use App\Http\Controllers\SystemSettingController;
+use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SystemBackupController;
+use App\Http\Controllers\SystemSettingController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,19 +47,33 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
+    // Deliberately outside auth:sanctum — this is the frontend's session-restore check on
+    // every page load, so a guest visiting the login page hits it with no session cookie at
+    // all. Sanctum's statefulApi() middleware (bootstrap/app.php) still resolves $request->user()
+    // from the session when one exists; auth:sanctum only decides whether to abort with 401
+    // when it doesn't. Answering 200+null instead of a hard 401 for "never logged in" avoids
+    // both a spurious browser console error on every guest page load and an unnecessary
+    // gcgea:session-expired event firing before anyone has actually logged in.
+    Route::middleware('security.timeout')->get('/me', [AuthController::class, 'me']);
+
     Route::middleware(['auth:sanctum', 'security.timeout'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
-        Route::get('/me', [AuthController::class, 'me']);
         Route::post('/change-password', [AuthController::class, 'changePassword']);
     });
 });
 
 Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'maintenance'])->group(function () {
+    Route::get('/global-search', GlobalSearchController::class);
     Route::post('/report-exports/pdf', [ReportExportController::class, 'pdf']);
     Route::post('/report-exports/excel', [ReportExportController::class, 'excel']);
 
+    // Bundles roles/all, users/all, offices/all, loan-types, benefit-types, deduction-types,
+    // and loan-settings into one response — see LookupsController for why.
+    Route::get('/lookups', [LookupsController::class, 'index']);
+
     Route::get('/system-settings', [SystemSettingController::class, 'index']);
     Route::get('/appearance-settings', [SystemSettingController::class, 'appearance']);
+    Route::get('/system-storage-usage', [SystemSettingController::class, 'storageUsage']);
     Route::put('/system-settings/{section}', [SystemSettingController::class, 'update']);
     Route::get('/system-backups', [SystemBackupController::class, 'index']);
     Route::post('/system-backups', [SystemBackupController::class, 'store']);
@@ -98,6 +114,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::middleware('permission:members.review')->get('/member-imports/pending-review', [MemberImportController::class, 'pendingReview']);
     Route::middleware('permission:member_import.view')->group(function () {
         Route::get('/member-imports', [MemberImportController::class, 'index']);
+        Route::get('/member-imports/all', [MemberImportController::class, 'all']);
         Route::get('/member-imports/{batch:token}', [MemberImportController::class, 'show']);
         Route::get('/member-imports/{batch:token}/report', [MemberImportController::class, 'downloadReport']);
     });
@@ -106,6 +123,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
         Route::post('/member-imports/{batch:token}/select-sheet', [MemberImportController::class, 'selectSheet']);
         Route::post('/member-imports/{batch:token}/preview', [MemberImportController::class, 'preview']);
         Route::post('/member-imports/{batch:token}/commit', [MemberImportController::class, 'commit']);
+        Route::post('/member-imports/{batch:token}/undo', [MemberImportController::class, 'undo']);
     });
     Route::middleware('permission:member_import.resolve_duplicates')->post('/member-imports/{batch:token}/resolve-duplicates', [MemberImportController::class, 'resolveDuplicates']);
     Route::middleware('permission:member_import.manage_offices')->post('/member-imports/{batch:token}/resolve-office', [MemberImportController::class, 'resolveOffice']);
@@ -129,6 +147,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     // Contributions
     Route::get('/contributions/all', [ContributionController::class, 'all']);
     Route::get('/contributions/periods', [ContributionController::class, 'periods']);
+    Route::get('/contributions/summary', [ContributionController::class, 'summary']);
     Route::get('/contributions/check-duplicate', [ContributionController::class, 'checkDuplicate']);
     Route::post('/contributions/check-duplicates', [ContributionController::class, 'checkDuplicates']);
     Route::get('/contributions', [ContributionController::class, 'index']);
@@ -146,12 +165,14 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::get('/reports/fund-allocations', [ContributionFundController::class, 'report']);
     Route::get('/reports/remittance-breakdown', RemittanceBreakdownReportController::class);
     Route::get('/annual-budgets', [AnnualBudgetController::class, 'index']);
+    Route::get('/annual-budgets/all', [AnnualBudgetController::class, 'all']);
     Route::get('/annual-budgets/id/{annualBudget}', [AnnualBudgetController::class, 'showById']);
     Route::get('/annual-budgets/{year}', [AnnualBudgetController::class, 'show']);
     Route::put('/annual-budgets/{year}', [AnnualBudgetController::class, 'update']);
     Route::post('/annual-budgets/{year}/copy-previous', [AnnualBudgetController::class, 'copyPrevious']);
     Route::post('/annual-budgets/{year}/submit', [AnnualBudgetController::class, 'submit']);
     Route::get('/disbursements', [DisbursementController::class, 'index']);
+    Route::get('/disbursements/all', [DisbursementController::class, 'all']);
     Route::post('/disbursements', [DisbursementController::class, 'store']);
     Route::get('/disbursements/{disbursement}', [DisbursementController::class, 'show']);
     Route::put('/disbursements/{disbursement}', [DisbursementController::class, 'update']);
@@ -206,6 +227,8 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
         Route::post('/legacy-loan-imports', [LegacyLoanImportController::class, 'upload']);
         Route::post('/legacy-loan-imports/{token}/commit', [LegacyLoanImportController::class, 'commit']);
         Route::get('/loan-imports/history', [LoanImportHistoryController::class, 'index']);
+        Route::get('/loan-imports/history/all', [LoanImportHistoryController::class, 'all']);
+        Route::post('/loan-imports/history/{batch:token}/undo', [LoanImportHistoryController::class, 'undo']);
         Route::get('/loan-imports/history/{batch:token}', [LoanImportHistoryController::class, 'show']);
     });
     Route::get('/loans/all', [LoanController::class, 'all']);
@@ -294,6 +317,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::get('/users/{user}/login-history', [UserController::class, 'loginHistory']);
 
     // Dashboard
+    Route::get('/dashboard/overview', [DashboardController::class, 'overview']);
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
     Route::get('/dashboard/monthly-releases', [DashboardController::class, 'monthlyLoanReleases']);
     Route::get('/dashboard/monthly-collections', [DashboardController::class, 'monthlyCollections']);

@@ -25,7 +25,12 @@ class ApprovalActionResource extends JsonResource
             // assigned approver role) over the actor's primary role — a user can hold more
             // than one role (e.g. also Treasurer), so this correctly labels which hat they
             // were wearing for this action rather than always showing their primary title.
-            'performedByRole' => $this->stage?->approverRole?->name ?? $this->actor?->role?->name,
+            // 'submitted'/'resubmitted' are the exception: their workflow_stage_id points at
+            // the *next* (first) approver stage, not a stage this actor was acting under, so
+            // that stage's approver role must never be attributed to the submitter.
+            'performedByRole' => in_array($this->action, ['submitted', 'resubmitted'], true)
+                ? $this->actor?->role?->name
+                : ($this->stage?->approverRole?->name ?? $this->actor?->role?->name),
             'performedAt' => $this->acted_at?->toIso8601String(),
             'remarks' => $this->remarks,
         ];

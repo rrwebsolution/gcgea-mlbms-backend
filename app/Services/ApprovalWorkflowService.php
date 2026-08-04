@@ -3,11 +3,11 @@
 namespace App\Services;
 
 use App\Exceptions\ApprovalActionConflictException;
+use App\Models\AnnualBudget;
 use App\Models\ApprovalAction;
 use App\Models\ApprovalInstance;
-use App\Models\AnnualBudget;
-use App\Models\Disbursement;
 use App\Models\BenefitApplication;
+use App\Models\Disbursement;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\User;
@@ -206,9 +206,13 @@ class ApprovalWorkflowService
         $perPage = (int) ($filters['perPage'] ?? 10);
         $page = (int) ($filters['page'] ?? 1);
         $subjectClass = isset($filters['subjectType']) ? self::subjectClassForSlug($filters['subjectType']) : null;
+        // Super Admin sees every approval regardless of status, even ones they aren't the
+        // assigned approver for — read-only for stages they can't personally act on. Every
+        // other role only ever sees what it's eligible for / personally acted on, below.
+        $isSuperAdmin = $user->role?->code === 'super_administrator';
 
         if ($tab === 'pending' || $tab === 'for-approval') {
-            $eligibleStageIds = $this->eligibleStageIdsFor($user);
+            $eligibleStageIds = $isSuperAdmin ? null : $this->eligibleStageIdsFor($user);
 
             $query = ApprovalInstance::query()
                 ->where('status', 'pending')
@@ -224,7 +228,9 @@ class ApprovalWorkflowService
             }
 
             if ($tab === 'pending') {
-                $query->whereIn('current_stage_id', $eligibleStageIds);
+                if ($eligibleStageIds !== null) {
+                    $query->whereIn('current_stage_id', $eligibleStageIds);
+                }
 
                 return $query->orderBy('started_at')->paginate($perPage, page: $page);
             }
@@ -243,8 +249,8 @@ class ApprovalWorkflowService
             $atApproveStage = $query
                 ->whereHas('currentStage', fn ($q) => $q->where('stage_type', 'approve'))
                 ->get()
-                ->filter(fn (ApprovalInstance $instance) =>
-                    in_array($instance->current_stage_id, $eligibleStageIds, true)
+                ->filter(fn (ApprovalInstance $instance) => $eligibleStageIds === null
+                    || in_array($instance->current_stage_id, $eligibleStageIds, true)
                     || $myReviewedSubjectKeys->contains($instance->subject_type.'#'.$instance->subject_id)
                 )
                 ->sortBy('started_at')
@@ -263,7 +269,7 @@ class ApprovalWorkflowService
         // "Released" once the workflow actually finishes. Otherwise a Loan Officer's
         // reviewed item would sit under "Approved" forever, even long after release.
         $candidateQuery = ApprovalAction::query()
-            ->where('acted_by_user_id', $user->id)
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('acted_by_user_id', $user->id))
             ->whereIn('action', ['review', 'approve', 'reject', 'return', 'release'])
             ->with(['stage', 'subject' => fn ($morphTo) => $morphTo->morphWith([
                 Loan::class => ['member', 'approvalInstance.currentStage'],

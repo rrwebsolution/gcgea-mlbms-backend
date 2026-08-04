@@ -11,6 +11,12 @@ use Carbon\Carbon;
  *  - "Custom" interest method has no distinct formula — it falls into the same
  *    diminishing-balance branch as "Diminishing Balance". Not a bug to fix here.
  *  - The last installment always absorbs whatever balance/rounding remains.
+ *  - One deliberate divergence from the TS port: due-date stepping uses Carbon's
+ *    addMonthsNoOverflow(), not addMonths(). date-fns' addMonths() (used on the
+ *    frontend) already clamps to the target month's last day; Carbon's plain
+ *    addMonths() does not — it overflows into the following month whenever the
+ *    anchor day (29/30/31) doesn't exist there, which silently skips a calendar
+ *    month in the schedule (most visibly February) and duplicates another.
  */
 class LoanCalculator
 {
@@ -43,7 +49,7 @@ class LoanCalculator
                 $balance = max(0, $balance - $principalPortion);
                 $schedule[] = [
                     'installment_number' => $i,
-                    'due_date' => $firstDueDate->copy()->addMonths($i - 1)->toDateString(),
+                    'due_date' => $firstDueDate->copy()->addMonthsNoOverflow($i - 1)->toDateString(),
                     'beginning_balance' => $beginningBalance,
                     'principal' => $principalPortion,
                     'interest' => 0,
@@ -65,7 +71,7 @@ class LoanCalculator
                 $balance = max(0, $balance - $principalPortion);
                 $schedule[] = [
                     'installment_number' => $i,
-                    'due_date' => $firstDueDate->copy()->addMonths($i - 1)->toDateString(),
+                    'due_date' => $firstDueDate->copy()->addMonthsNoOverflow($i - 1)->toDateString(),
                     'beginning_balance' => $beginningBalance,
                     'principal' => $principalPortion,
                     'interest' => $monthlyInterest,
@@ -94,7 +100,7 @@ class LoanCalculator
                 $totalInterest += $interestPortion;
                 $schedule[] = [
                     'installment_number' => $i,
-                    'due_date' => $firstDueDate->copy()->addMonths($i - 1)->toDateString(),
+                    'due_date' => $firstDueDate->copy()->addMonthsNoOverflow($i - 1)->toDateString(),
                     'beginning_balance' => $beginningBalance,
                     'principal' => $principalPortion,
                     'interest' => $interestPortion,

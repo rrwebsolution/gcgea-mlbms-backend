@@ -43,6 +43,15 @@ class MemberResource extends JsonResource
             'retireeStatus' => $this->retiree_status,
             'remarks' => $this->remarks,
 
+            'membershipFeePayment' => $this->membershipFeePayment ? [
+                'referenceNumber' => $this->membershipFeePayment->reference_number,
+                'amount' => (float) $this->membershipFeePayment->amount,
+                'paymentDate' => $this->membershipFeePayment->payment_date?->toDateString(),
+                'paymentMethod' => $this->membershipFeePayment->payment_method,
+                'receivedBy' => $this->membershipFeePayment->received_by,
+                'status' => $this->membershipFeePayment->status,
+            ] : null,
+
             'beneficiaries' => BeneficiaryResource::collection($this->beneficiaries),
             'documents' => MemberDocumentResource::collection($this->documents),
 

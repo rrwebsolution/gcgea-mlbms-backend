@@ -7,7 +7,9 @@ use App\Models\LoanImportBatch;
 use App\Models\LoanPayment;
 use App\Models\LoanType;
 use App\Models\Member;
+use App\Models\User;
 use Carbon\Carbon;
+use Database\Seeders\LoanTypeSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -15,6 +17,47 @@ use PhpOffice\PhpSpreadsheet\Reader\Csv;
 
 class LegacyLoanWorkbookImportService
 {
+    public function undo(LoanImportBatch $batch, User $user): void
+    {
+        $latestBatchId = LoanImportBatch::query()->orderByDesc('committed_at')->value('id');
+        if ($latestBatchId !== $batch->id) {
+            throw new \RuntimeException('Only the most recently committed loan import can be undone.');
+        }
+
+        DB::transaction(function () use ($batch, $user): void {
+            $loanIds = $batch->rows()->whereNotNull('loan_id')->pluck('loan_id')->unique();
+            $loans = Loan::query()->whereIn('id', $loanIds)->get();
+
+            foreach ($loans as $loan) {
+                $hasLaterActivity = $loan->payments()->where('payment_method', '!=', 'Legacy Import')->exists()
+                    || $loan->subsequentReloans()->exists()
+                    || $loan->documents()->exists()
+                    || DB::table('payroll_deduction_details')->where('loan_id', $loan->id)->exists();
+
+                if ($hasLaterActivity) {
+                    throw new \RuntimeException("Cannot undo: {$loan->application_number} already has later payments, documents, reloan, or payroll activity.");
+                }
+            }
+
+            $filename = $batch->original_filename;
+            $loanCount = $loans->count();
+
+            foreach ($loans as $loan) {
+                $loan->payments()->where('payment_method', 'Legacy Import')->delete();
+                $loan->delete();
+            }
+
+            $batch->delete();
+
+            app(AuditLogService::class)->record(
+                $user,
+                $batch,
+                'undo',
+                "Undid loan import batch \"{$filename}\" — removed {$loanCount} imported loan(s)."
+            );
+        });
+    }
+
     public function preview(string $path, string $period): array
     {
         $rows = $this->readRows($path, $period);
@@ -164,8 +207,11 @@ class LegacyLoanWorkbookImportService
                         'processing_fee' => 0,
                         'purpose' => 'Imported legacy Solidarity Cash Assistance Loan',
                         'payment_method' => 'Payroll Deduction',
-                        'first_due_date' => $start->copy()->addMonth(),
-                        'maturity_date' => $start->copy()->addMonths($term),
+                        // NoOverflow variants — see LoanCalculator's docblock: a plain addMonth(s)
+                        // from a 29th/30th/31st start date overflows into the following month
+                        // instead of clamping, silently skipping a calendar month.
+                        'first_due_date' => $start->copy()->addMonthNoOverflow(),
+                        'maturity_date' => $start->copy()->addMonthsNoOverflow($term),
                         'principal' => $row['principal'],
                         'total_interest' => $row['interest'],
                         'net_proceeds' => $row['principal'],
@@ -220,7 +266,7 @@ class LegacyLoanWorkbookImportService
                     }
 
                     for ($installment = 1; $installment <= $term; $installment++) {
-                        $due = $start->copy()->addMonths($installment);
+                        $due = $start->copy()->addMonthsNoOverflow($installment);
                         $isPast = $due->lt($periodStart);
                         $principalPart = round($row['principal'] / $term, 2);
                         $interestPart = round($row['interest'] / $term, 2);
@@ -476,7 +522,7 @@ class LegacyLoanWorkbookImportService
             return $loanType;
         }
 
-        app(\Database\Seeders\LoanTypeSeeder::class)->run();
+        app(LoanTypeSeeder::class)->run();
 
         return LoanType::query()->whereRaw('LOWER(name) LIKE ?', ['%solidarity%cash%assistance%'])->firstOrFail();
     }

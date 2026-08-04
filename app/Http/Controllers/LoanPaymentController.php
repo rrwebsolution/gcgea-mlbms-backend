@@ -55,7 +55,7 @@ class LoanPaymentController extends Controller
             'amountPaid' => ['required', 'numeric', 'gt:0'],
             'penalty' => ['nullable', 'numeric', 'min:0'],
             'paymentMethod' => ['required', 'string', 'in:Payroll Deduction,Cash,Bank Transfer,Check'],
-            'officialReceiptNumber' => ['required', 'string', 'max:255'],
+            'officialReceiptNumber' => ['nullable', 'string', 'max:255'],
             'payrollReference' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string'],
         ]);
@@ -75,7 +75,7 @@ class LoanPaymentController extends Controller
                     'paymentDate' => $data['paymentDate'],
                     'paymentMethod' => $data['paymentMethod'],
                     'payrollReference' => $data['payrollReference'] ?? null,
-                    'officialReceiptNumber' => $data['officialReceiptNumber'],
+                    'officialReceiptNumber' => $data['officialReceiptNumber'] ?? null,
                     'receivedBy' => $request->user()->full_name,
                     'remarks' => $data['remarks'] ?? null,
                 ]);

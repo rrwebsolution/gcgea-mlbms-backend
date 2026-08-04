@@ -25,6 +25,7 @@ class BenefitApplication extends Model
         'eligibility_result',
         'release_date',
         'release_reference_number',
+        'actual_released_amount',
         'rejection_reason',
         'cancellation_reason',
         'remarks',

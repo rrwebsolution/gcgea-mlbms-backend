@@ -6,12 +6,13 @@ use App\Models\SystemSetting;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Font;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -42,7 +43,7 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle(substr(preg_replace('/[\\\\\\/?*\\[\\]:]/', '', $data['title']) ?: 'Report', 0, 31));
-        $lastColumn = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(max(count($data['headers']), 1));
+        $lastColumn = Coordinate::stringFromColumnIndex(max(count($data['headers']), 1));
         $pageSetup = $sheet->getPageSetup();
         $pageSetup->setPaperSize(match ($body['paperSize']) {
             'letter' => PageSetup::PAPERSIZE_LETTER,
@@ -116,12 +117,12 @@ class ReportExportController extends Controller
             ->getStartColor()->setARGB('FF'.ltrim($body['headerBackground'], '#'));
         if ($lastRow >= 9) {
             $sheet->getStyle("A9:{$lastColumn}{$lastRow}")->getFont()
-            ->setName($body['bodyFontFamily'])
-            ->setSize($body['bodyFontSize'])
-            ->setBold($body['bodyFontWeight'] === 'bold')
-            ->setItalic($body['bodyFontStyle'] === 'italic')
-            ->setUnderline($body['bodyTextDecoration'] === 'underline' ? Font::UNDERLINE_SINGLE : Font::UNDERLINE_NONE)
-            ->getColor()->setARGB('FF'.ltrim($body['bodyTextColor'], '#'));
+                ->setName($body['bodyFontFamily'])
+                ->setSize($body['bodyFontSize'])
+                ->setBold($body['bodyFontWeight'] === 'bold')
+                ->setItalic($body['bodyFontStyle'] === 'italic')
+                ->setUnderline($body['bodyTextDecoration'] === 'underline' ? Font::UNDERLINE_SINGLE : Font::UNDERLINE_NONE)
+                ->getColor()->setARGB('FF'.ltrim($body['bodyTextColor'], '#'));
         }
         if ($body['showBorders']) {
             $sheet->getStyle("A8:{$lastColumn}{$lastRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
@@ -238,6 +239,17 @@ class ReportExportController extends Controller
         $body['captionStyle'] = [...$bodyDefaults['captionStyle'], ...($categoryTemplate['captionStyle'] ?? [])];
         $body['noteStyle'] = [...$bodyDefaults['noteStyle'], ...($categoryTemplate['noteStyle'] ?? [])];
 
+        // Keep downloaded reports visually consistent with the application.
+        // DomPDF does not understand the CSS font tokens stored by Appearance,
+        // so translate the selected UI font to a concrete PDF font family.
+        if ($format === 'pdf') {
+            $appearance = SystemSetting::where('section', 'appearance')->first()?->value ?? [];
+            $systemFont = $this->pdfFontFamily($appearance['fontFamily'] ?? 'century-gothic');
+            $body['bodyFontFamily'] = $systemFont;
+            $body['captionStyle']['fontFamily'] = $systemFont;
+            $body['noteStyle']['fontFamily'] = $systemFont;
+        }
+
         return [
             ...$defaults,
             ...$stored,
@@ -259,6 +271,23 @@ class ReportExportController extends Controller
             'right' => Alignment::HORIZONTAL_RIGHT,
             default => Alignment::HORIZONTAL_LEFT,
         });
+    }
+
+    private function pdfFontFamily(string $font): string
+    {
+        return match ($font) {
+            // Century Gothic falls back to Arial in the web app when the font
+            // is unavailable; using Arial here preserves that same behavior.
+            'century-gothic', 'arial', 'geist' => 'Arial',
+            'calibri' => 'Calibri',
+            'verdana' => 'Verdana',
+            'serif' => 'Georgia',
+            'monospace' => 'Courier New',
+            // The application runs on Windows, where the system UI face is
+            // Segoe UI. DomPDF will use DejaVu Sans if it is not installed.
+            'system' => 'Segoe UI',
+            default => 'Arial',
+        };
     }
 
     private function pdfLogo(string $logo): string

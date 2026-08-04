@@ -20,6 +20,16 @@ class LoanSettingsController extends Controller
             abort(403, "You don't have permission to perform this action.");
         }
 
+        $roundingAliases = [
+            'Round to nearest centavo' => 'Nearest Centavo',
+            'Round to nearest peso' => 'Nearest Peso',
+            'Round up' => 'Round Up',
+            'Round down' => 'Round Down',
+        ];
+        $request->merge([
+            'roundingRule' => $roundingAliases[$request->input('roundingRule')] ?? $request->input('roundingRule'),
+        ]);
+
         $data = $request->validate([
             'minimumMembershipMonths' => ['required', 'integer', 'min:0'],
             'defaultPenaltyRate' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -74,8 +84,8 @@ class LoanSettingsController extends Controller
             'reloan_enabled' => $data['reloanEnabled'],
             'reloan_allow_after_fully_paid' => $data['reloanAllowAfterFullyPaid'],
             'reloan_allow_while_active' => $data['reloanAllowWhileActive'],
-            'reloan_min_paid_installments' => $data['reloanMinPaidInstallments'],
-            'reloan_min_paid_percentage' => $data['reloanMinPaidPercentage'],
+            'reloan_min_paid_installments' => $data['reloanMinPaidInstallments'] ?? null,
+            'reloan_min_paid_percentage' => $data['reloanMinPaidPercentage'] ?? null,
             'reloan_require_no_overdue' => $data['reloanRequireNoOverdue'],
             'reloan_require_no_penalty' => $data['reloanRequireNoPenalty'],
             'reloan_deduct_previous_balance' => $data['reloanDeductPreviousBalance'],

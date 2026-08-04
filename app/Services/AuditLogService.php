@@ -2,17 +2,18 @@
 
 namespace App\Services;
 
-use App\Models\AuditLog;
 use App\Models\AnnualBudget;
-use App\Models\Disbursement;
+use App\Models\AuditLog;
 use App\Models\BenefitApplication;
+use App\Models\Disbursement;
 use App\Models\Loan;
+use App\Models\LoanImportBatch;
 use App\Models\Member;
 use App\Models\MemberImportBatch;
 use App\Models\PayrollDeductionHeader;
 use App\Models\PayrollImportBatch;
-use App\Models\User;
 use App\Models\SystemSetting;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
@@ -46,6 +47,7 @@ class AuditLogService
         return match (true) {
             $subject instanceof Member => 'Member Registration',
             $subject instanceof Loan => 'Loan Application',
+            $subject instanceof LoanImportBatch => 'Loan Import',
             $subject instanceof BenefitApplication => 'Benefit Application',
             $subject instanceof PayrollImportBatch => 'Payroll Import',
             $subject instanceof PayrollDeductionHeader => 'Payroll Deductions',
@@ -61,6 +63,7 @@ class AuditLogService
         return match (true) {
             $subject instanceof Member => $subject->member_number ?? $subject->draft_reference_no,
             $subject instanceof Loan, $subject instanceof BenefitApplication => $subject->application_number,
+            $subject instanceof LoanImportBatch => $subject->original_filename ?? $subject->token,
             $subject instanceof PayrollImportBatch => $subject->payroll_reference ?? $subject->token,
             $subject instanceof PayrollDeductionHeader => $subject->payroll_reference,
             $subject instanceof MemberImportBatch => $subject->original_filename ?? $subject->token,

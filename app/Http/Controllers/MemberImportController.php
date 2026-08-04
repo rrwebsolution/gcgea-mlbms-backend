@@ -232,6 +232,22 @@ class MemberImportController extends Controller
     }
 
     /**
+     * Reverts a committed batch — deletes the members (and their beneficiaries/
+     * legacy loan drafts) it created. Only offered for the most recently
+     * committed batch; see MemberImportService::undo() for the guardrails.
+     */
+    public function undo(Request $request, MemberImportBatch $batch)
+    {
+        try {
+            $this->service->undo($batch, $request->user());
+        } catch (\RuntimeException $e) {
+            abort(422, $e->getMessage());
+        }
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
      * Members created by an import that are still awaiting registration
      * approval — the queue at /members/imported-pending-review. Joined with
      * their originating batch/row for source-worksheet context the plain
@@ -304,6 +320,14 @@ class MemberImportController extends Controller
                 'totalPages' => $paginator->lastPage(),
             ],
         ]);
+    }
+
+    /** Full, unpaginated list — backs the Member Import History page's client-side pagination. */
+    public function all()
+    {
+        $batches = MemberImportBatch::with(['uploadedBy', 'committedBy'])->orderByDesc('created_at')->get();
+
+        return response()->json($batches->map(fn (MemberImportBatch $b) => $this->summarize($b))->values());
     }
 
     public function show(MemberImportBatch $batch)

@@ -105,7 +105,7 @@ class LoanEligibilityService
 
         $membershipDate = Carbon::parse($member->membership_date);
         $completedMonths = $this->monthsBetween($membershipDate, now());
-        $eligibleOn = $membershipDate->copy()->addMonths($required);
+        $eligibleOn = $membershipDate->copy()->addMonthsNoOverflow($required);
 
         return [
             'label' => 'Minimum Membership Duration Met',

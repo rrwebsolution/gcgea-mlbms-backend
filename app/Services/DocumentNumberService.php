@@ -11,6 +11,7 @@ class DocumentNumberService
         'member' => ['prefix' => 'GCGEA-MEM', 'includeYear' => false, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'loan' => ['prefix' => 'GCGEA-LN', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'loanPayment' => ['prefix' => 'GCGEA-PAY', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
+        'officialReceipt' => ['prefix' => 'GCGEA-OR', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'contribution' => ['prefix' => 'GCGEA-CON', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'benefit' => ['prefix' => 'GCGEA-BEN', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'benefitRelease' => ['prefix' => 'GCGEA-BENREL', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],

@@ -5,10 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Member\MemberRequest;
 use App\Http\Resources\MemberResource;
 use App\Models\Member;
+use App\Models\SystemSetting;
 use App\Services\ApprovalWorkflowService;
+use App\Services\DocumentNumberService;
 use App\Services\LoanEligibilityService;
 use App\Services\MembershipApprovalService;
-use App\Services\DocumentNumberService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -81,9 +82,44 @@ class MemberController extends Controller
         return response()->json(ApiPagination::make($paginator, MemberResource::class));
     }
 
-    public function all()
+    /**
+     * No params: sync member picklists (bulk contribution entry, etc.) — active,
+     * non-archived, non-draft only. Unchanged default behavior for those existing callers.
+     * The three explicit flags below back the Members management page's own three views
+     * (browse/archived/drafts) with a single full-fetch each, letting it search/sort/filter/
+     * paginate entirely client-side instead of round-tripping every keystroke.
+     */
+    public function all(Request $request)
     {
-        // Sync member picklists (bulk contribution entry, etc.) — active, non-archived, non-draft only.
+        if ($request->boolean('archived')) {
+            return MemberResource::collection(
+                Member::with(['office', 'beneficiaries', 'documents'])
+                    ->where('is_archived', true)
+                    ->orderBy('archived_at', 'desc')
+                    ->get()
+            );
+        }
+
+        if ($request->boolean('draftsOnly')) {
+            return MemberResource::collection(
+                Member::with(['office', 'beneficiaries', 'documents', 'approvalInstance'])
+                    ->where('is_archived', false)
+                    ->where('is_draft', true)
+                    ->orderBy('surname')
+                    ->get()
+            );
+        }
+
+        if ($request->boolean('browseAll')) {
+            return MemberResource::collection(
+                Member::with(['office', 'beneficiaries', 'documents', 'approvalInstance'])
+                    ->where('is_archived', false)
+                    ->where('is_draft', false)
+                    ->orderBy('surname')
+                    ->get()
+            );
+        }
+
         return MemberResource::collection(
             Member::with(['office', 'beneficiaries', 'documents', 'approvalInstance'])
                 ->where('is_archived', false)
@@ -133,6 +169,7 @@ class MemberController extends Controller
             $member->update(['draft_completion_percentage' => $asDraft ? $member->fresh('beneficiaries')->draftCompletionPercentage() : null]);
 
             if (! $asDraft) {
+                $this->recordMembershipFee($member, $request);
                 $this->membershipApproval->process($member, $request->user(), 'manual');
             }
 
@@ -228,6 +265,7 @@ class MemberController extends Controller
             $this->syncBeneficiaries($member, $request->input('beneficiaries', []));
 
             $member->update(['submitted_by_user_id' => $request->user()->id]);
+            $this->recordMembershipFee($member, $request);
             $this->membershipApproval->process($member, $request->user(), 'manual');
         });
 
@@ -366,6 +404,24 @@ class MemberController extends Controller
             'retiree_status' => $validated['retireeStatus'] ?? null,
             'remarks' => $validated['remarks'] ?? null,
         ];
+    }
+
+    private function recordMembershipFee(Member $member, Request $request): void
+    {
+        $generalSettings = SystemSetting::where('section', 'general')->first()?->value ?? [];
+        $amount = (float) ($generalSettings['membershipRegistrationFee'] ?? 100);
+
+        $member->membershipFeePayment()->firstOrCreate(
+            [],
+            [
+                'reference_number' => 'GCGEA-MF-'.now()->year.'-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT),
+                'amount' => $amount,
+                'payment_date' => now()->toDateString(),
+                'payment_method' => 'Cash',
+                'received_by' => $request->user()->full_name,
+                'status' => 'Posted',
+            ]
+        );
     }
 
     /**

@@ -26,8 +26,12 @@ class DisbursementController extends Controller
     {
         $this->authorizePermission($request, 'disbursements.view');
         $query = Disbursement::query()->with(self::WITH)->orderByDesc('disbursement_date')->orderByDesc('id');
-        if ($request->filled('status')) $query->where('status', $request->string('status')->toString());
-        if ($request->filled('year')) $query->whereYear('disbursement_date', $request->integer('year'));
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+        if ($request->filled('year')) {
+            $query->whereYear('disbursement_date', $request->integer('year'));
+        }
         if ($request->filled('search')) {
             $search = '%'.$request->string('search')->trim()->toString().'%';
             $query->where(fn ($q) => $q->where('reference_number', 'ilike', $search)
@@ -41,9 +45,20 @@ class DisbursementController extends Controller
         ));
     }
 
+    /** Full, unpaginated list — backs the Disbursements page's client-side search/filter/pagination. */
+    public function all(Request $request)
+    {
+        $this->authorizePermission($request, 'disbursements.view');
+
+        return DisbursementResource::collection(
+            Disbursement::query()->with(self::WITH)->orderByDesc('disbursement_date')->orderByDesc('id')->get()
+        );
+    }
+
     public function show(Request $request, Disbursement $disbursement)
     {
         $this->authorizePermission($request, 'disbursements.view');
+
         return new DisbursementResource($disbursement->load(self::WITH));
     }
 
@@ -55,6 +70,7 @@ class DisbursementController extends Controller
             $this->validateBudgetAvailability($data);
             $year = (int) substr($data['disbursementDate'], 0, 4);
             $next = (int) Disbursement::query()->whereYear('disbursement_date', $year)->count() + 1;
+
             return Disbursement::create([
                 ...$this->columns($data),
                 'reference_number' => sprintf('DISB-%d-%05d', $year, $next),
@@ -63,6 +79,7 @@ class DisbursementController extends Controller
             ]);
         });
         $this->auditLog->record($request->user(), $disbursement, 'disbursement_created');
+
         return (new DisbursementResource($disbursement->load(self::WITH)))->response()->setStatusCode(201);
     }
 
@@ -80,6 +97,7 @@ class DisbursementController extends Controller
             ]);
         });
         $this->auditLog->record($request->user(), $disbursement, 'disbursement_updated');
+
         return new DisbursementResource($disbursement->fresh(self::WITH));
     }
 
@@ -93,6 +111,7 @@ class DisbursementController extends Controller
             'amount' => $disbursement->amount,
         ], $disbursement);
         $this->workflow->startInstance($disbursement, 'disbursement', $request->user());
+
         return new DisbursementResource($disbursement->fresh(self::WITH));
     }
 
@@ -112,6 +131,7 @@ class DisbursementController extends Controller
             'paid_at' => now(),
         ]);
         $this->auditLog->record($request->user(), $disbursement, 'disbursement_paid');
+
         return new DisbursementResource($disbursement->fresh(self::WITH));
     }
 
@@ -122,6 +142,7 @@ class DisbursementController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $disbursement->update(['status' => 'Voided', 'void_reason' => $data['reason']]);
         $this->auditLog->record($request->user(), $disbursement, 'disbursement_voided', $data['reason']);
+
         return new DisbursementResource($disbursement->fresh(self::WITH));
     }
 

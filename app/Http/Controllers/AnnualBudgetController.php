@@ -39,6 +39,19 @@ class AnnualBudgetController extends Controller
         ]);
     }
 
+    /** Full, unpaginated list — backs the Annual Budgets page's client-side search/filter/pagination. */
+    public function all(Request $request)
+    {
+        $this->authorizeView($request);
+
+        $budgets = AnnualBudget::query()
+            ->with(['items.disbursements', 'approvalInstance.currentStage'])
+            ->orderByDesc('fiscal_year')
+            ->get();
+
+        return response()->json($budgets->map(fn (AnnualBudget $budget) => $this->resource($budget))->values());
+    }
+
     public function show(Request $request, int $year)
     {
         $this->authorizeView($request);

@@ -22,6 +22,9 @@ class ContributionResource extends JsonResource
             'contributionPeriod' => $this->contribution_period,
             'contributionType' => $this->contribution_type,
             'amount' => (float) $this->amount,
+            'cashPabaonAmount' => $this->cash_pabaon_amount !== null
+                ? (float) $this->cash_pabaon_amount
+                : null,
             'paymentDate' => $this->payment_date?->toDateString(),
             'paymentMethod' => $this->payment_method,
             'officialReceiptNumber' => $this->official_receipt_number,

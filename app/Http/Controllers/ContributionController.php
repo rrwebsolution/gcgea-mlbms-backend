@@ -7,8 +7,10 @@ use App\Http\Resources\ContributionResource;
 use App\Models\Contribution;
 use App\Models\Deduction;
 use App\Models\DeductionType;
+use App\Models\Member;
 use App\Models\SystemSetting;
 use App\Services\ContributionFundAllocator;
+use App\Services\DocumentNumberService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -42,6 +44,17 @@ class ContributionController extends Controller
 
     public function show(Contribution $contribution)
     {
+        $cashPabaonAmount = $contribution->contribution_type === 'Monthly Dues'
+            ? Contribution::query()
+                ->where('member_id', $contribution->member_id)
+                ->where('contribution_period', $contribution->contribution_period)
+                ->where('contribution_type', 'Cash Pabaon')
+                ->where('status', 'Posted')
+                ->value('amount')
+            : $contribution->amount;
+
+        $contribution->setAttribute('cash_pabaon_amount', $cashPabaonAmount);
+
         return new ContributionResource($contribution->load(['member.office', 'fundAllocations']));
     }
 
@@ -52,6 +65,31 @@ class ContributionController extends Controller
             ->distinct()
             ->orderBy('contribution_period', 'desc')
             ->pluck('contribution_period');
+    }
+
+    public function summary()
+    {
+        $currentPeriod = now()->format('Y-m');
+        $activeMembers = Member::query()
+            ->where('membership_status', 'Active')
+            ->where('is_archived', false)
+            ->where('is_draft', false)
+            ->count();
+        $paidMembers = Contribution::query()
+            ->where('status', 'Posted')
+            ->where('contribution_period', $currentPeriod)
+            ->distinct('member_id')
+            ->count('member_id');
+
+        return response()->json([
+            'totalContributions' => Contribution::count(),
+            'totalAmount' => (float) Contribution::where('status', 'Posted')->sum('amount'),
+            'paidMembers' => $paidMembers,
+            'unpaidMembers' => max(0, $activeMembers - $paidMembers),
+            'contributionsThisMonth' => Contribution::where('status', 'Posted')
+                ->whereBetween('payment_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
+                ->count(),
+        ]);
     }
 
     public function checkDuplicate(Request $request)
@@ -119,7 +157,7 @@ class ContributionController extends Controller
                 'encoded_by' => $request->user()->full_name,
                 'status' => 'Posted',
             ]);
-            $contribution->update(['reference_number' => app(\App\Services\DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
+            $contribution->update(['reference_number' => app(DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
             $this->fundAllocator->allocate($contribution, $request->user());
             $this->postCashPabaonDeduction($contribution, $request->user()->full_name);
 
@@ -170,6 +208,48 @@ class ContributionController extends Controller
             'status' => 'Posted',
         ]);
         $deduction->update(['reference_number' => 'GCGEA-DED-'.now()->year.'-'.str_pad((string) $deduction->id, 6, '0', STR_PAD_LEFT)]);
+
+        $this->postCashPabaonContribution(
+            (string) $contribution->member_id, $contribution->contribution_period, (float) $pabaonType->default_amount,
+            $contribution->payment_date, $contribution->payroll_reference, $encodedBy
+        );
+    }
+
+    /**
+     * Cash Pabaon is real money contributed alongside Monthly Dues, so besides the
+     * payroll Deduction record it also gets its own Contribution record (type "Cash
+     * Pabaon") — otherwise it never shows up in Contribution Records/reports. Guarded
+     * by the same per-period idempotency check as the deduction so replays/edits don't
+     * double-post.
+     */
+    private function postCashPabaonContribution(
+        string $memberId, string $period, float $amount, string $paymentDate, ?string $payrollReference, string $encodedBy
+    ): void {
+        $existing = Contribution::query()
+            ->where('member_id', $memberId)
+            ->where('contribution_type', 'Cash Pabaon')
+            ->where('contribution_period', $period)
+            ->where('status', 'Posted')
+            ->exists();
+
+        if ($existing || $amount <= 0) {
+            return;
+        }
+
+        $contribution = Contribution::create([
+            'member_id' => $memberId,
+            'contribution_period' => $period,
+            'contribution_type' => 'Cash Pabaon',
+            'amount' => $amount,
+            'payment_date' => $paymentDate,
+            'payment_method' => 'Payroll Deduction',
+            'payroll_reference' => $payrollReference,
+            'remarks' => 'Automatically posted alongside Monthly Dues payroll deduction.',
+            'encoded_by' => $encodedBy,
+            'status' => 'Posted',
+        ]);
+        $contribution->update(['reference_number' => app(DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
+        $this->fundAllocator->allocate($contribution);
     }
 
     private function contributionSettings(): array
@@ -259,8 +339,13 @@ class ContributionController extends Controller
             ]);
 
             // Monthly Dues and its auto-posted Cash Pabaon form one grouped
-            // payment. Voiding the parent contribution must atomically void
-            // the matching posted Cash Pabaon record as well.
+            // payment — postCashPabaonDeduction() creates BOTH a Deduction
+            // (payroll ledger) and a Contribution (contribution_type Cash
+            // Pabaon, so it shows in Contribution Records/reports) for the
+            // same real-world payment. Voiding the parent Monthly Dues must
+            // atomically void both, not just the Deduction — otherwise the
+            // Cash Pabaon Contribution is left Posted while its Deduction and
+            // parent Monthly Dues both show Voided.
             if ($contribution->contribution_type === 'Monthly Dues') {
                 $pabaonTypeId = DeductionType::query()->where('code', 'pabaon')->value('id');
 
@@ -277,6 +362,18 @@ class ContributionController extends Controller
                             'voided_at' => $voidedAt,
                         ]);
                 }
+
+                Contribution::query()
+                    ->where('member_id', $contribution->member_id)
+                    ->where('contribution_type', 'Cash Pabaon')
+                    ->where('contribution_period', $contribution->contribution_period)
+                    ->where('status', 'Posted')
+                    ->update([
+                        'status' => 'Voided',
+                        'void_reason' => $reason,
+                        'voided_by' => $voidedBy,
+                        'voided_at' => $voidedAt,
+                    ]);
             }
         });
 
@@ -357,6 +454,11 @@ class ContributionController extends Controller
                     'reference_number' => 'GCGEA-DED-'.now()->year.'-'.str_pad((string) $deduction->id, 6, '0', STR_PAD_LEFT),
                 ]);
                 $result['cashPabaonSaved']++;
+
+                $this->postCashPabaonContribution(
+                    $memberId, $data['contributionPeriod'], $cashPabaonAmount,
+                    $data['paymentDate'], $data['payrollReference'] ?? null, $encodedBy
+                );
             };
 
             foreach ($data['rows'] as $row) {
@@ -411,7 +513,7 @@ class ContributionController extends Controller
                     'encoded_by' => $encodedBy,
                     'status' => 'Posted',
                 ]);
-                $contribution->update(['reference_number' => app(\App\Services\DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
+                $contribution->update(['reference_number' => app(DocumentNumberService::class)->generate('contribution', $contribution->id, $contribution->payment_date)]);
                 $this->fundAllocator->allocate($contribution);
                 $result['saved']++;
                 $postCashPabaon((string) $row['memberId']);

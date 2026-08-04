@@ -6,6 +6,7 @@ use App\Http\Requests\User\UserRequest;
 use App\Http\Resources\LoginHistoryResource;
 use App\Http\Resources\SystemUserResource;
 use App\Http\Resources\UserResource;
+use App\Models\SystemSetting;
 use App\Models\User;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,13 +38,20 @@ class UserController extends Controller
     /**
      * Full, unpaginated user list — used both by admin Users pages and by the
      * Approval Workflow admin's approver-by-user picker, so it is intentionally
-     * not permission-gated the same way index()/show() are.
+     * not permission-gated the same way index()/show() are. Defaults to Active only
+     * (pickers should never offer a deactivated/disabled user as an approver);
+     * ?includeInactive=1 lifts that for the Users management page itself, which
+     * needs to list every status so admins can find and reactivate accounts.
      */
-    public function all()
+    public function all(Request $request)
     {
-        return SystemUserResource::collection(
-            User::with(self::WITH)->where('status', 'Active')->orderBy('full_name')->get()
-        );
+        $query = User::with(self::WITH)->orderBy('full_name');
+
+        if (! $request->boolean('includeInactive')) {
+            $query->where('status', 'Active');
+        }
+
+        return SystemUserResource::collection($query->get());
     }
 
     public function show(Request $request, User $user)
@@ -70,7 +78,7 @@ class UserController extends Controller
                 'password' => Hash::make($request->string('password')->toString()),
                 'role_id' => $request->input('roleId'),
                 'require_password_change' => $request->boolean('requirePasswordChange')
-                    || \App\Models\SystemSetting::security()['requirePasswordChangeOnFirstLogin'],
+                    || SystemSetting::security()['requirePasswordChangeOnFirstLogin'],
                 'remarks' => $request->input('remarks'),
                 'status' => $request->string('status')->toString(),
                 'email_verified_at' => now(),
@@ -192,6 +200,7 @@ class UserController extends Controller
     private function storagePathFromUrl(string $url): string
     {
         $path = parse_url($url, PHP_URL_PATH) ?: $url;
+
         return ltrim(preg_replace('#^/storage/#', '', $path), '/');
     }
 

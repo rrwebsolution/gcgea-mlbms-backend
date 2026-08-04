@@ -345,6 +345,58 @@ class MemberImportService
     }
 
     /**
+     * Reverts a committed batch: deletes every member it created
+     * (imported_from_batch_id = this batch) along with their beneficiaries/
+     * documents (DB-cascaded) and approval instance, then deletes the batch
+     * itself (cascades its rows and legacy loan drafts). Only the most
+     * recently committed batch may be undone — an older one may have members
+     * a later import has since merged into. Refuses if any created member
+     * already has financial activity, since that can't be safely un-created.
+     */
+    public function undo(MemberImportBatch $batch, User $user): void
+    {
+        if ($batch->status !== 'Committed') {
+            throw new RuntimeException('Only a committed batch can be undone.');
+        }
+
+        $latestCommittedId = MemberImportBatch::where('status', 'Committed')->orderByDesc('committed_at')->value('id');
+        if ($latestCommittedId !== $batch->id) {
+            throw new RuntimeException('Only the most recently committed member import can be undone.');
+        }
+
+        DB::transaction(function () use ($batch, $user) {
+            $members = Member::where('imported_from_batch_id', $batch->id)->get();
+
+            foreach ($members as $member) {
+                $hasActivity = DB::table('contributions')->where('member_id', $member->id)->exists()
+                    || DB::table('loans')->where('member_id', $member->id)->exists()
+                    || DB::table('loan_payments')->where('member_id', $member->id)->exists()
+                    || DB::table('benefit_applications')->where('member_id', $member->id)->exists()
+                    || DB::table('deductions')->where('member_id', $member->id)->exists();
+
+                if ($hasActivity) {
+                    throw new RuntimeException("Cannot undo: {$member->full_name} ({$member->member_number}) already has other records attached (contributions, loans, benefits, or payroll) and can no longer be safely removed.");
+                }
+            }
+
+            $originalFilename = $batch->original_filename;
+            $memberCount = $members->count();
+
+            foreach ($members as $member) {
+                $member->approvalInstance()->delete();
+                $member->delete();
+            }
+
+            $batch->delete();
+
+            $this->auditLog->record(
+                $user, $batch, 'undo',
+                "Undid member import batch \"{$originalFilename}\" — removed {$memberCount} member(s) it created."
+            );
+        });
+    }
+
+    /**
      * Merge strategy is fill-only-blanks: never overwrites a populated field
      * on the existing (already-approved, possibly hand-verified) member —
      * safer than trusting legacy sheet data of unknown provenance.

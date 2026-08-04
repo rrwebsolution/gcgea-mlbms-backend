@@ -5,11 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Member extends Model
 {
+    protected $with = ['membershipFeePayment'];
+
     protected $fillable = [
         'member_number',
         'employee_number',
@@ -99,6 +102,11 @@ class Member extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(MemberDocument::class);
+    }
+
+    public function membershipFeePayment(): HasOne
+    {
+        return $this->hasOne(MembershipFeePayment::class);
     }
 
     public function approvalInstance(): MorphOne

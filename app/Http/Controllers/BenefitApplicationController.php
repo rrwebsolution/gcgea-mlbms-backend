@@ -87,10 +87,17 @@ class BenefitApplicationController extends Controller
     public function release(Request $request, BenefitApplication $benefit)
     {
         $this->authorize('act', [$benefit, 'release']);
+
+        $data = $request->validate([
+            'actualReleasedAmount' => ['nullable', 'numeric', 'min:0'],
+            'remarks' => ['nullable', 'string'],
+        ]);
+
         $this->workflow->act($benefit, $request->user(), 'release', [
             'release_date' => now(),
             'release_reference_number' => app(DocumentNumberService::class)->generate('benefitRelease', $benefit->id),
-        ], $request->input('remarks'));
+            'actual_released_amount' => $data['actualReleasedAmount'] ?? $benefit->approved_amount ?? $benefit->requested_amount,
+        ], $data['remarks'] ?? null);
 
         return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
     }
@@ -107,6 +114,7 @@ class BenefitApplicationController extends Controller
         }
 
         $member = Member::findOrFail($request->input('memberId'));
+        $this->assertRetirementBenefitAllowed($request, $member, $asDraft);
         $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
         $this->validateSubmissionPolicy($request, $computed);
 
@@ -153,6 +161,7 @@ class BenefitApplicationController extends Controller
         }
 
         $member = Member::findOrFail($request->input('memberId'));
+        $this->assertRetirementBenefitAllowed($request, $member, $asDraft);
         $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
         $this->validateSubmissionPolicy($request, $computed);
 
@@ -238,6 +247,18 @@ class BenefitApplicationController extends Controller
                 'eligibility_result' => $eligibilityResult,
             ],
         ];
+    }
+
+    private function assertRetirementBenefitAllowed(BenefitRequest $request, Member $member, bool $asDraft): void
+    {
+        if ($asDraft || ! (SystemSetting::benefit()['requireRetiredStatusForRetirementBenefit'] ?? true)) {
+            return;
+        }
+
+        $benefitType = BenefitType::find($request->input('benefitTypeId'));
+        if ($benefitType?->name === 'Retirement and Separation Benefit' && $member->retiree_status !== 'Retired') {
+            abort(422, 'Retirement and Separation Benefit requires the member Retiree Status to be Retired.');
+        }
     }
 
     private function validateSubmissionPolicy(BenefitRequest $request, array &$computed): void
