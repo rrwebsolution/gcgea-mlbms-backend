@@ -116,8 +116,22 @@ class MemberDocumentController extends Controller
         ]);
     }
 
+    /**
+     * Documents uploaded under a previous APP_URL (e.g. before a Railway
+     * domain or custom domain change) still have that old host baked into
+     * file_url. Stripping by the current Storage URL would leave the old
+     * host in place and make the exists()/response() calls fail with a
+     * false 404, so resolve the path from the stable "/storage/" marker
+     * instead of relying on an exact host match.
+     */
     private function pathFromUrl(string $url): string
     {
+        $marker = '/storage/';
+        $position = strpos($url, $marker);
+        if ($position !== false) {
+            return ltrim(substr($url, $position + strlen($marker)), '/');
+        }
+
         $storageUrl = Storage::disk('public')->url('');
 
         return ltrim(str_replace($storageUrl, '', $url), '/');
