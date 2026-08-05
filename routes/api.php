@@ -108,6 +108,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::post('/members/{member}/photo', [MemberDocumentController::class, 'storePhoto']);
     Route::delete('/members/{member}/photo', [MemberDocumentController::class, 'destroyPhoto']);
     Route::post('/members/{member}/documents', [MemberDocumentController::class, 'storeDocument']);
+    Route::get('/members/{member}/documents/{document}/file', [MemberDocumentController::class, 'showDocument']);
     Route::delete('/members/{member}/documents/{document}', [MemberDocumentController::class, 'destroyDocument']);
     Route::get('/members/{member}/loan-eligibility', [MemberController::class, 'loanEligibility']);
     Route::post('/members/{member}/membership-fee/pay', [MemberController::class, 'payMembershipFee']);

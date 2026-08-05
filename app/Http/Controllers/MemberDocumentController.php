@@ -92,6 +92,30 @@ class MemberDocumentController extends Controller
         return response()->json(['message' => 'Document removed.']);
     }
 
+    /**
+     * Streams a member document through the authenticated API. This avoids
+     * exposing deployment-specific /storage URLs and works behind the
+     * frontend's Vercel /api proxy even when Railway has no public symlink.
+     */
+    public function showDocument(Request $request, Member $member, string $document)
+    {
+        abort_unless(
+            $request->user()->hasPermission('members.view')
+                || $request->user()->hasPermission('members.update')
+                || $request->user()->hasPermission('loans.view')
+                || $request->user()->hasPermission('loans.create'),
+            403
+        );
+
+        $doc = $member->documents()->findOrFail($document);
+        $path = $this->pathFromUrl($doc->file_url);
+        abort_unless(Storage::disk('public')->exists($path), 404, 'The uploaded document file could not be found.');
+
+        return Storage::disk('public')->response($path, $doc->file_name, [
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
     private function pathFromUrl(string $url): string
     {
         $storageUrl = Storage::disk('public')->url('');
