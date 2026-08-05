@@ -7,6 +7,7 @@ use App\Models\LegacyLoanImport;
 use App\Models\Member;
 use App\Models\MemberImportBatch;
 use App\Models\MemberImportRow;
+use App\Models\SystemSetting;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -196,6 +197,8 @@ class MemberImportService
 
         DB::transaction(function () use ($batch, $rowResolutions, $user, &$summary) {
             $rows = $batch->rows()->orderBy('row_number')->get();
+            $generalSettings = SystemSetting::where('section', 'general')->first()?->value ?? [];
+            $membershipRegistrationFee = (float) ($generalSettings['membershipRegistrationFee'] ?? 100);
 
             foreach ($rows as $row) {
                 $summary['totalRows']++;
@@ -285,6 +288,19 @@ class MemberImportService
                     'submitted_by_user_id' => $user->id,
                 ]);
                 $member->update(['member_number' => app(DocumentNumberService::class)->generate('member', $member->id)]);
+
+                // Imported members come from the association's existing
+                // membership records, so their registration fee is treated
+                // as already paid instead of creating the Unpaid placeholder
+                // used by a new manual registration.
+                $member->membershipFeePayment()->create([
+                    'reference_number' => 'GCGEA-MF-'.now()->year.'-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT),
+                    'amount' => $membershipRegistrationFee,
+                    'payment_date' => now()->toDateString(),
+                    'payment_method' => 'Member Import',
+                    'received_by' => $user->full_name,
+                    'status' => 'Posted',
+                ]);
 
                 foreach ([1 => 'beneficiary_1', 2 => 'beneficiary_2'] as $priority => $key) {
                     if (! empty($data[$key])) {

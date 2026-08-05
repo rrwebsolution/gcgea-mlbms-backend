@@ -39,6 +39,17 @@ class BenefitEligibilityService
                     : "Member status is {$member->membership_status}, not Active."),
         ];
 
+        // Registration only records the fee is owed (MemberController::recordMembershipFee()) —
+        // it must actually be Posted via Treasury > Payments before this member can claim a benefit.
+        $membershipFeePaid = $member->membershipFeePayment?->status === 'Posted';
+        $checks[] = [
+            'label' => 'Membership Registration Fee Paid',
+            'passed' => $membershipFeePaid,
+            'detail' => $membershipFeePaid
+                ? 'Membership registration fee has been paid.'
+                : 'Membership registration fee has not been paid yet — post it under Treasury > Payments before this member can claim a benefit.',
+        ];
+
         $membershipMonths = $this->monthsBetween(Carbon::parse($member->membership_date), now());
         $checks[] = [
             'label' => 'Membership Duration',
@@ -221,6 +232,7 @@ class BenefitEligibilityService
     {
         $criticalLabels = [
             'Active Member',
+            'Membership Registration Fee Paid',
             'No Duplicate Pending Application',
             'Retirement Age Within Policy',
             'Qualified Nuclear Family Beneficiary',

@@ -99,6 +99,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::get('/members/{member}', [MemberController::class, 'show']);
     Route::put('/members/{member}', [MemberController::class, 'update']);
     Route::patch('/members/{member}/membership-status', [MemberController::class, 'updateMembershipStatus']);
+    Route::post('/members/{member}/loan-financial-profile', [MemberController::class, 'updateLoanFinancialProfile']);
     Route::post('/members/{member}/submit', [MemberController::class, 'submit']);
     Route::post('/members/{member}/approve', [MemberController::class, 'approve']);
     Route::post('/members/{member}/reject', [MemberController::class, 'reject']);
@@ -109,6 +110,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::post('/members/{member}/documents', [MemberDocumentController::class, 'storeDocument']);
     Route::delete('/members/{member}/documents/{document}', [MemberDocumentController::class, 'destroyDocument']);
     Route::get('/members/{member}/loan-eligibility', [MemberController::class, 'loanEligibility']);
+    Route::post('/members/{member}/membership-fee/pay', [MemberController::class, 'payMembershipFee']);
 
     // Member Import
     Route::middleware('permission:members.review')->get('/member-imports/pending-review', [MemberImportController::class, 'pendingReview']);

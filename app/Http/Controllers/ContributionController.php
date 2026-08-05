@@ -143,6 +143,11 @@ class ContributionController extends Controller
             }
         }
 
+        $member = Member::find($request->input('memberId'));
+        if ($member && $member->membershipFeePayment?->status !== 'Posted') {
+            abort(422, 'This member cannot contribute until their membership registration fee has been paid. Post it under Treasury > Payments first.');
+        }
+
         $contribution = DB::transaction(function () use ($request) {
             $contribution = Contribution::create([
                 'member_id' => $request->input('memberId'),

@@ -46,6 +46,7 @@ class LoanEligibilityService
 
         return [
             $this->registrationApprovedCheck($member),
+            $this->membershipFeePaidCheck($member),
             $this->activeStatusCheck($member),
             $this->membershipDurationCheck($member, $loanType),
             $forReloan && ! $settings->apply_contribution_rule_to_reloan
@@ -79,6 +80,20 @@ class LoanEligibilityService
             'detail' => $approved
                 ? 'Member registration has been approved.'
                 : 'Member registration is not yet approved.',
+        ];
+    }
+
+    /** Registration only records the fee is owed (MemberController::recordMembershipFee()) — it must actually be Posted via Treasury > Payments before this member can borrow. */
+    public function membershipFeePaidCheck(Member $member): array
+    {
+        $paid = $member->membershipFeePayment?->status === 'Posted';
+
+        return [
+            'label' => 'Membership Registration Fee Paid',
+            'passed' => $paid,
+            'detail' => $paid
+                ? 'Membership registration fee has been paid.'
+                : 'Membership registration fee has not been paid yet — post it under Treasury > Payments before this member can apply for a loan.',
         ];
     }
 
@@ -302,6 +317,7 @@ class LoanEligibilityService
     {
         $criticalLabels = [
             'Registration Approved',
+            'Membership Registration Fee Paid',
             'Active Member',
             'Minimum Membership Duration Met',
             'Fully Paid Monthly Dues',

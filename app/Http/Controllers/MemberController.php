@@ -14,6 +14,7 @@ use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class MemberController extends Controller
 {
@@ -235,6 +236,56 @@ class MemberController extends Controller
     }
 
     /**
+     * Lets a loan encoder capture the two member-level financial details
+     * required for an income-bracketed loan without granting broad member
+     * profile edit access. The supporting document remains categorized as
+     * Payslip internally for compatibility with existing member records.
+     */
+    public function updateLoanFinancialProfile(Request $request, Member $member)
+    {
+        abort_unless(
+            $request->user()->hasPermission('loans.create')
+                || $request->user()->hasPermission('loans.update')
+                || $request->user()->hasPermission('members.update'),
+            403
+        );
+
+        $validated = $request->validate([
+            'netPay' => ['required', 'numeric', 'gt:0', 'max:9999999999.99'],
+            'file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+
+        $file = $request->file('file');
+        if (! $file && ! $member->documents()->where('category', 'Payslip')->exists()) {
+            abort(422, 'A Net Take Home Pay document is required.');
+        }
+        $path = $file?->store("members/{$member->id}/documents", 'public');
+
+        try {
+            DB::transaction(function () use ($member, $request, $validated, $file, $path) {
+                $member->update(['net_pay' => $validated['netPay']]);
+                if ($file && $path) {
+                    $member->documents()->create([
+                        'category' => 'Payslip',
+                        'file_name' => $file->getClientOriginalName(),
+                        'file_url' => Storage::disk('public')->url($path),
+                        'file_size_bytes' => $file->getSize(),
+                        'uploaded_by' => $request->user()->full_name,
+                        'uploaded_at' => now(),
+                    ]);
+                }
+            });
+        } catch (\Throwable $exception) {
+            if ($path) {
+                Storage::disk('public')->delete($path);
+            }
+            throw $exception;
+        }
+
+        return new MemberResource($member->fresh()->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
+    }
+
+    /**
      * Finalizes a draft member into a real registration — full strict
      * validation, assigns the real member_number, clears draft bookkeeping.
      * Reuses MemberRequest, which validates strictly whenever `asDraft` is
@@ -406,6 +457,12 @@ class MemberController extends Controller
         ];
     }
 
+    /**
+     * Registration only records that a fee is *owed* — it does not collect payment.
+     * The fee starts life Unpaid and only becomes Posted once the Treasurer actually
+     * posts it (Treasury > Payments > Membership Fee, or MemberController::payMembershipFee()).
+     * Contributions, loans, and benefit claims are gated on this being Posted.
+     */
     private function recordMembershipFee(Member $member, Request $request): void
     {
         $generalSettings = SystemSetting::where('section', 'general')->first()?->value ?? [];
@@ -416,12 +473,44 @@ class MemberController extends Controller
             [
                 'reference_number' => 'GCGEA-MF-'.now()->year.'-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT),
                 'amount' => $amount,
-                'payment_date' => now()->toDateString(),
-                'payment_method' => 'Cash',
-                'received_by' => $request->user()->full_name,
-                'status' => 'Posted',
+                'status' => 'Unpaid',
             ]
         );
+    }
+
+    /**
+     * Treasurer posts the actual membership registration fee payment — the counterpart
+     * to recordMembershipFee() above, which only ever creates the Unpaid placeholder.
+     */
+    public function payMembershipFee(Request $request, Member $member)
+    {
+        if (! $request->user()->hasPermission('members.create') && ! $request->user()->hasPermission('contributions.create')) {
+            abort(403, "You don't have permission to perform this action.");
+        }
+
+        $feePayment = $member->membershipFeePayment;
+        if (! $feePayment) {
+            abort(404, 'This member has no membership fee on record.');
+        }
+        if ($feePayment->status === 'Posted') {
+            abort(422, 'This membership fee has already been posted.');
+        }
+
+        $data = $request->validate([
+            'amount' => ['nullable', 'numeric', 'min:0'],
+            'paymentDate' => ['required', 'date'],
+            'paymentMethod' => ['required', 'string'],
+        ]);
+
+        $feePayment->update([
+            'amount' => $data['amount'] ?? $feePayment->amount,
+            'payment_date' => $data['paymentDate'],
+            'payment_method' => $data['paymentMethod'],
+            'received_by' => $request->user()->full_name,
+            'status' => 'Posted',
+        ]);
+
+        return new MemberResource($member->fresh()->load(['office', 'beneficiaries', 'documents', 'approvalInstance']));
     }
 
     /**
