@@ -205,7 +205,7 @@ class SystemSettingController extends Controller
                 'value.progressColorEnd' => ['required', 'string', $color],
                 'value.baseFontSize' => ['required', 'integer', 'min:12', 'max:20'],
                 'value.fontWeight' => ['required', Rule::in([400, 500, 600, 700])],
-                'value.fontFamily' => ['required', Rule::in(['century-gothic', 'arial', 'calibri', 'verdana', 'geist', 'system', 'serif', 'monospace'])],
+                'value.fontFamily' => ['required', Rule::in(['century-gothic', 'arial', 'calibri', 'verdana', 'geist', 'poppins', 'roboto', 'inter', 'times-new-roman', 'system', 'serif', 'monospace'])],
                 'value.fontStyle' => ['required', Rule::in(['normal', 'italic'])],
                 'value.borderRadius' => ['required', 'integer', 'min:0', 'max:32'],
                 'value.compactMode' => ['required', 'boolean'],

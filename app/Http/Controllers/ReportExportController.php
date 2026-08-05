@@ -278,10 +278,11 @@ class ReportExportController extends Controller
         return match ($font) {
             // Century Gothic falls back to Arial in the web app when the font
             // is unavailable; using Arial here preserves that same behavior.
-            'century-gothic', 'arial', 'geist' => 'Arial',
+            'century-gothic', 'arial', 'geist', 'poppins', 'roboto', 'inter' => 'Arial',
             'calibri' => 'Calibri',
             'verdana' => 'Verdana',
             'serif' => 'Georgia',
+            'times-new-roman' => 'Times New Roman',
             'monospace' => 'Courier New',
             // The application runs on Windows, where the system UI face is
             // Segoe UI. DomPDF will use DejaVu Sans if it is not installed.

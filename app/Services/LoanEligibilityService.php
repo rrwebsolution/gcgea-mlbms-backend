@@ -19,6 +19,25 @@ use Carbon\Carbon;
  */
 class LoanEligibilityService
 {
+    public const FIRST_SOLIDARITY_LOAN_AMOUNT = 20000.0;
+
+    /**
+     * Resolution rule for a member's first Solidarity Cash Assistance Loan.
+     * Draft/rejected/cancelled applications do not make somebody a previous
+     * borrower; only a loan that reached processing or release does.
+     */
+    public function isFirstSolidarityLoan(Member $member, LoanType $loanType): bool
+    {
+        if (! str_contains(strtolower($loanType->name), 'solidarity')) {
+            return false;
+        }
+
+        return ! Loan::query()
+            ->where('member_id', $member->id)
+            ->whereNotIn('status', ['Draft', 'Rejected', 'Cancelled'])
+            ->exists();
+    }
+
     /**
      * @return array<int, array{label: string, passed: bool, detail: string}>
      */
@@ -258,6 +277,18 @@ class LoanEligibilityService
 
     public function amountOrNetPayCheck(Member $member, LoanType $loanType, float $requestedAmount): array
     {
+        if ($this->isFirstSolidarityLoan($member, $loanType)) {
+            $passed = abs($requestedAmount - self::FIRST_SOLIDARITY_LOAN_AMOUNT) < 0.01;
+
+            return [
+                'label' => 'First Solidarity Loan Fixed Amount',
+                'passed' => $passed,
+                'detail' => $passed
+                    ? 'The member\'s first Solidarity Cash Assistance Loan is fixed at ₱20,000 under the resolution.'
+                    : 'A first-time Solidarity borrower may apply for exactly ₱20,000 only.',
+            ];
+        }
+
         if ($loanType->incomeBrackets->isNotEmpty()) {
             $hasNetPay = $member->net_pay !== null;
             $bracket = $hasNetPay

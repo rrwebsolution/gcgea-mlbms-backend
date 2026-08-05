@@ -384,10 +384,30 @@ class LoanController extends Controller
             ]);
         }
 
+        // A member's first Solidarity Cash Assistance Loan is fixed by the
+        // resolution at ₱20,000. This server-side rule is authoritative so a
+        // manually altered browser/API request cannot exceed the limit.
+        $isFirstSolidarityLoan = $loanType
+            && $eligibilityService->isFirstSolidarityLoan($member, $loanType);
+        if ($isFirstSolidarityLoan) {
+            if ($requestedAmount !== null
+                && abs($requestedAmount - LoanEligibilityService::FIRST_SOLIDARITY_LOAN_AMOUNT) >= 0.01) {
+                throw ValidationException::withMessages([
+                    'requestedAmount' => [
+                        'A first-time Solidarity borrower may apply for exactly ₱20,000 only.',
+                    ],
+                ]);
+            }
+
+            if ($requestedAmount !== null) {
+                $requestedAmount = LoanEligibilityService::FIRST_SOLIDARITY_LOAN_AMOUNT;
+            }
+        }
+
         // Income-bracketed loan types (Resolution No. 24-2026, Solidarity Cash
         // Assistance Loan) cap the loanable amount by the member's net pay —
         // authoritative, overrides whatever the client sent.
-        if ($loanType && $loanType->incomeBrackets->isNotEmpty()) {
+        if ($loanType && ! $isFirstSolidarityLoan && $loanType->incomeBrackets->isNotEmpty()) {
             $bracket = $member->net_pay !== null ? $bracketService->bracketFor($loanType, (float) $member->net_pay) : null;
             if (! $bracket) {
                 $requestedAmount = null;
