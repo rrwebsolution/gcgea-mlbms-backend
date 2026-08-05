@@ -13,6 +13,7 @@ use App\Services\AuditLogService;
 use App\Services\BenefitEligibilityService;
 use App\Services\BenefitProrationService;
 use App\Services\DocumentNumberService;
+use App\Services\FundLedgerService;
 use App\Support\ApiPagination;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -84,7 +85,7 @@ class BenefitApplicationController extends Controller
         return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
     }
 
-    public function release(Request $request, BenefitApplication $benefit)
+    public function release(Request $request, FundLedgerService $fundLedger, BenefitApplication $benefit)
     {
         $this->authorize('act', [$benefit, 'release']);
 
@@ -93,11 +94,15 @@ class BenefitApplicationController extends Controller
             'remarks' => ['nullable', 'string'],
         ]);
 
-        $this->workflow->act($benefit, $request->user(), 'release', [
-            'release_date' => now(),
-            'release_reference_number' => app(DocumentNumberService::class)->generate('benefitRelease', $benefit->id),
-            'actual_released_amount' => $data['actualReleasedAmount'] ?? $benefit->approved_amount ?? $benefit->requested_amount,
-        ], $data['remarks'] ?? null);
+        $releasedAmount = (float) ($data['actualReleasedAmount'] ?? $benefit->approved_amount ?? $benefit->requested_amount);
+        DB::transaction(function () use ($benefit, $request, $data, $releasedAmount, $fundLedger) {
+            $this->workflow->act($benefit, $request->user(), 'release', [
+                'release_date' => now(),
+                'release_reference_number' => app(DocumentNumberService::class)->generate('benefitRelease', $benefit->id),
+                'actual_released_amount' => $releasedAmount,
+            ], $data['remarks'] ?? null);
+            $fundLedger->recordBenefitRelease($benefit, $releasedAmount, $request->user());
+        });
 
         return new BenefitApplicationResource($benefit->fresh()->load(['member.office', 'benefitType']));
     }

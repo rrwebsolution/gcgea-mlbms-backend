@@ -168,6 +168,18 @@ class SystemSettingController extends Controller
                 'value.leftLogo' => ['required', 'string', 'max:3000000'],
                 'value.rightLogo' => ['required', 'string', 'max:3000000'],
                 'value.showGeneratedDate' => ['required', 'boolean'],
+                'value.checkTemplate' => ['required', 'array'],
+                'value.checkTemplate.heading' => ['required', 'string', 'max:100'],
+                'value.checkTemplate.subheading' => ['required', 'string', 'max:150'],
+                'value.checkTemplate.payeeLabel' => ['required', 'string', 'max:100'],
+                'value.checkTemplate.currencyLabel' => ['required', 'string', 'max:50'],
+                'value.checkTemplate.memoPrefix' => ['required', 'string', 'max:50'],
+                'value.checkTemplate.signatoryLabel' => ['required', 'string', 'max:150'],
+                'value.checkTemplate.horizontalMargin' => ['required', 'numeric', 'min:0', 'max:1.5'],
+                'value.checkTemplate.headerTop' => ['required', 'numeric', 'min:0', 'max:2'],
+                'value.checkTemplate.payeeTop' => ['required', 'numeric', 'min:0', 'max:3'],
+                'value.checkTemplate.wordsTop' => ['required', 'numeric', 'min:0', 'max:3'],
+                'value.checkTemplate.footerBottom' => ['required', 'numeric', 'min:0', 'max:2'],
                 'value.categoryTemplates' => ['required', 'array', 'size:5'],
             ]);
 

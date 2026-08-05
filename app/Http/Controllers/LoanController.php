@@ -14,6 +14,7 @@ use App\Models\Member;
 use App\Services\ApprovalWorkflowService;
 use App\Services\AuditLogService;
 use App\Services\DocumentNumberService;
+use App\Services\FundLedgerService;
 use App\Services\LoanCalculator;
 use App\Services\LoanEligibilityService;
 use App\Services\LoanIncomeBracketService;
@@ -115,7 +116,7 @@ class LoanController extends Controller
      * are regenerated here — the stored totals stay as computed at
      * application time.
      */
-    public function release(LoanReleaseRequest $request, LoanCalculator $calculator, Loan $loan)
+    public function release(LoanReleaseRequest $request, LoanCalculator $calculator, FundLedgerService $fundLedger, Loan $loan)
     {
         $this->authorize('act', [$loan, 'release']);
         $principalBalance = max(0, round((float) $loan->principal, 2));
@@ -136,7 +137,7 @@ class LoanController extends Controller
             $loan->loanType->service_charge_percent !== null ? (float) $loan->loanType->service_charge_percent : null,
         );
 
-        DB::transaction(function () use ($request, $loan, $recomputed, $firstDueDate, $releaseDate, $principalBalance, $interestBalance) {
+        DB::transaction(function () use ($request, $loan, $recomputed, $firstDueDate, $releaseDate, $principalBalance, $interestBalance, $fundLedger) {
             $loan->schedule()->delete();
             foreach ($recomputed['schedule'] as $entry) {
                 $loan->schedule()->create($entry);
@@ -154,6 +155,7 @@ class LoanController extends Controller
                 'first_due_date' => $firstDueDate,
                 'maturity_date' => $recomputed['maturityDate'],
             ], $request->input('remarks'));
+            $fundLedger->recordLoanRelease($loan, (float) $request->input('actualReleasedAmount'), $request->user());
         });
 
         return new LoanResource($loan->fresh()->load(['member.office', 'loanType', 'previousLoan', 'documents']));
@@ -390,17 +392,18 @@ class LoanController extends Controller
         $isFirstSolidarityLoan = $loanType
             && $eligibilityService->isFirstSolidarityLoan($member, $loanType);
         if ($isFirstSolidarityLoan) {
+            $firstLoanAmount = (float) LoanSetting::current()->first_solidarity_loan_amount;
             if ($requestedAmount !== null
-                && abs($requestedAmount - LoanEligibilityService::FIRST_SOLIDARITY_LOAN_AMOUNT) >= 0.01) {
+                && abs($requestedAmount - $firstLoanAmount) >= 0.01) {
                 throw ValidationException::withMessages([
                     'requestedAmount' => [
-                        'A first-time Solidarity borrower may apply for exactly ₱20,000 only.',
+                        'A first-time Solidarity borrower may apply for exactly ₱'.number_format($firstLoanAmount, 2).' only.',
                     ],
                 ]);
             }
 
             if ($requestedAmount !== null) {
-                $requestedAmount = LoanEligibilityService::FIRST_SOLIDARITY_LOAN_AMOUNT;
+                $requestedAmount = $firstLoanAmount;
             }
         }
 

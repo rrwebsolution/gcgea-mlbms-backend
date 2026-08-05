@@ -29,6 +29,8 @@ class LoanSettingResource extends JsonResource
             'requiredMonthlyDuesAmount' => (float) $this->required_monthly_dues_amount,
             'requireConsecutiveContributionMonths' => $this->require_consecutive_contribution_months,
             'applyContributionRuleToReloan' => $this->apply_contribution_rule_to_reloan,
+            'lockFirstSolidarityLoan' => $this->lock_first_solidarity_loan,
+            'firstSolidarityLoanAmount' => (float) $this->first_solidarity_loan_amount,
             'reloanPolicy' => [
                 'reloanEnabled' => $this->reloan_enabled,
                 'reloanAllowAfterFullyPaid' => $this->reloan_allow_after_fully_paid,

@@ -18,4 +18,9 @@ class ContributionFund extends Model
     {
         return $this->hasMany(ContributionFundAllocation::class, 'fund_id');
     }
+
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(FundTransaction::class, 'fund_id');
+    }
 }

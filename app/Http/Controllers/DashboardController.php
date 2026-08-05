@@ -16,6 +16,7 @@ use App\Models\LoanPayment;
 use App\Models\LoanSetting;
 use App\Models\Member;
 use App\Models\Office;
+use App\Services\FundLedgerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -79,9 +80,7 @@ class DashboardController extends Controller
             'fundBalances' => ContributionFund::query()->where('is_enabled', true)->orderBy('display_order')->get()->map(fn ($fund) => [
                 'fundId' => (string) $fund->id,
                 'fundName' => $fund->fund_name,
-                'balance' => (float) $fund->allocations()
-                    ->whereHas('contribution', fn ($q) => $q->where('status', 'Posted'))
-                    ->sum('allocated_amount'),
+                'balance' => app(FundLedgerService::class)->balance($fund),
             ])->values(),
 
             'pendingReloanApplications' => Loan::where('application_type', 'reloan')->where('status', 'Submitted')->count(),

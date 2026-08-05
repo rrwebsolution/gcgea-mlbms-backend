@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ContributionFund;
 use App\Models\ContributionFundAllocation;
 use App\Services\AuditLogService;
+use App\Services\FundLedgerService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -55,14 +56,19 @@ class ContributionFundController extends Controller
         $rows = ContributionFund::query()->orderBy('display_order')->get()->map(function ($fund) use ($from, $to) {
             $base = ContributionFundAllocation::query()->where('fund_id', $fund->id)
                 ->whereHas('contribution', fn ($q) => $q->where('status', 'Posted'));
-            if ($from) $base->whereHas('contribution', fn ($q) => $q->where('payment_date', '>=', $from));
-            if ($to) $base->whereHas('contribution', fn ($q) => $q->where('payment_date', '<=', $to));
+            if ($from) {
+                $base->whereHas('contribution', fn ($q) => $q->where('payment_date', '>=', $from));
+            }
+            if ($to) {
+                $base->whereHas('contribution', fn ($q) => $q->where('payment_date', '<=', $to));
+            }
 
             return [
                 'fundId' => (string) $fund->id,
                 'fundName' => $fund->fund_name,
-                'allocatedAmount' => (float) (clone $base)->sum('allocated_amount'),
-                'currentBalance' => (float) (clone $base)->sum('allocated_amount'),
+                'allocatedAmount' => app(FundLedgerService::class)->credits($fund),
+                'disbursedAmount' => (float) $fund->transactions()->where('transaction_type', 'Debit')->sum('amount'),
+                'currentBalance' => app(FundLedgerService::class)->balance($fund),
                 'monthlyTotal' => (float) (clone $base)->whereHas('contribution', fn ($q) => $q->where('contribution_period', now()->format('Y-m')))->sum('allocated_amount'),
                 'annualTotal' => (float) (clone $base)->whereHas('contribution', fn ($q) => $q->whereYear('payment_date', now()->year))->sum('allocated_amount'),
             ];
