@@ -169,6 +169,7 @@ class SystemSettingController extends Controller
                 'value.rightLogo' => ['required', 'string', 'max:3000000'],
                 'value.showGeneratedDate' => ['required', 'boolean'],
                 'value.checkTemplate' => ['required', 'array'],
+                'value.checkTemplate.backgroundColor' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
                 'value.checkTemplate.heading' => ['required', 'string', 'max:100'],
                 'value.checkTemplate.subheading' => ['required', 'string', 'max:150'],
                 'value.checkTemplate.payeeLabel' => ['required', 'string', 'max:100'],
