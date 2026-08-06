@@ -193,6 +193,7 @@ class PermissionSeeder extends Seeder
                     ['disbursements.submit', 'Submit Disbursements', 'Submit disbursements for approval'],
                     ['disbursements.approve', 'Approve Disbursements', 'Approve, reject, or return disbursements'],
                     ['disbursements.pay', 'Pay Disbursements', 'Mark approved disbursements as paid'],
+                    ['disbursements.print', 'Print Disbursements', 'Print disbursement checks'],
                     ['disbursements.void', 'Void Disbursements', 'Void paid disbursements'],
                 ],
             ],
