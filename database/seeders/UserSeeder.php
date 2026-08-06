@@ -39,20 +39,27 @@ class UserSeeder extends Seeder
         ];
 
         foreach ($users as $definition) {
-            $user = User::updateOrCreate(
-                ['username' => $definition['username']],
-                [
-                    'full_name' => $definition['full_name'],
-                    'email' => $definition['email'],
-                    'contact_number' => $definition['contact_number'],
-                    'password' => $password,
-                    'role_id' => $definition['role_id'],
-                    'require_password_change' => $definition['require_password_change'],
-                    'remarks' => $definition['remarks'],
-                    'status' => $definition['status'],
-                    'email_verified_at' => now(),
-                ]
-            );
+            // Matched by username OR email (not just username) because a row can
+            // already exist under one of these with the other field out of sync
+            // (e.g. edited via the app's user management screen after seeding),
+            // which would otherwise make updateOrCreate() try to INSERT a new
+            // row and crash on the email's unique constraint.
+            $user = User::where('username', $definition['username'])
+                ->orWhere('email', $definition['email'])
+                ->first() ?? new User;
+
+            $user->fill([
+                'username' => $definition['username'],
+                'full_name' => $definition['full_name'],
+                'email' => $definition['email'],
+                'contact_number' => $definition['contact_number'],
+                'password' => $password,
+                'role_id' => $definition['role_id'],
+                'require_password_change' => $definition['require_password_change'],
+                'remarks' => $definition['remarks'],
+                'status' => $definition['status'],
+                'email_verified_at' => now(),
+            ])->save();
 
             $user->additionalRoles()->sync($definition['additional_role_ids']);
 
