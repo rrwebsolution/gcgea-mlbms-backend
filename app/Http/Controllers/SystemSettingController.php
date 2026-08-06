@@ -59,6 +59,11 @@ class SystemSettingController extends Controller
             'section' => ['sometimes', Rule::in(self::SECTIONS)],
         ]);
 
+        if ($section === 'reportTemplate') {
+            $data['value'] = $this->mergeReportTemplateDefaults($data['value']);
+            $request->merge(['value' => $data['value']]);
+        }
+
         if ($section === 'general') {
             $request->validate([
                 'value.systemName' => ['required', 'string', 'max:150'],
@@ -163,19 +168,22 @@ class SystemSettingController extends Controller
             $request->validate([
                 'value.countryLine' => ['required', 'string', 'max:200'],
                 'value.organizationLine' => ['required', 'string', 'max:250'],
-                'value.acronymLine' => ['required', 'string', 'max:100'],
+                'value.acronymLine' => ['nullable', 'string', 'max:100'],
                 'value.addressLine' => ['required', 'string', 'max:500'],
-                'value.leftLogo' => ['required', 'string', 'max:3000000'],
-                'value.rightLogo' => ['required', 'string', 'max:3000000'],
+                'value.leftLogo' => ['nullable', 'string', 'max:3000000'],
+                'value.rightLogo' => ['nullable', 'string', 'max:3000000'],
                 'value.showGeneratedDate' => ['required', 'boolean'],
                 'value.checkTemplate' => ['required', 'array'],
                 'value.checkTemplate.backgroundColor' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-                'value.checkTemplate.heading' => ['required', 'string', 'max:100'],
-                'value.checkTemplate.subheading' => ['required', 'string', 'max:150'],
+                'value.checkTemplate.heading' => ['nullable', 'string', 'max:100'],
+                'value.checkTemplate.subheading' => ['nullable', 'string', 'max:150'],
                 'value.checkTemplate.payeeLabel' => ['required', 'string', 'max:100'],
                 'value.checkTemplate.currencyLabel' => ['required', 'string', 'max:50'],
                 'value.checkTemplate.memoPrefix' => ['required', 'string', 'max:50'],
-                'value.checkTemplate.signatoryLabel' => ['required', 'string', 'max:150'],
+                'value.checkTemplate.primarySignatoryName' => ['required', 'string', 'max:150'],
+                'value.checkTemplate.primarySignatoryTitle' => ['required', 'string', 'max:100'],
+                'value.checkTemplate.secondarySignatoryName' => ['required', 'string', 'max:150'],
+                'value.checkTemplate.secondarySignatoryTitle' => ['required', 'string', 'max:100'],
                 'value.checkTemplate.horizontalMargin' => ['required', 'numeric', 'min:0', 'max:1.5'],
                 'value.checkTemplate.headerTop' => ['required', 'numeric', 'min:0', 'max:2'],
                 'value.checkTemplate.payeeTop' => ['required', 'numeric', 'min:0', 'max:3'],
@@ -273,5 +281,95 @@ class SystemSettingController extends Controller
                 "{$stylePath}.textAlignment" => ['required', Rule::in(['left', 'center', 'right'])],
             ]);
         }
+    }
+
+    private function mergeReportTemplateDefaults(array $value): array
+    {
+        return array_replace_recursive($this->defaultReportTemplate(), $value);
+    }
+
+    private function defaultReportTemplate(): array
+    {
+        return [
+            'countryLine' => 'Republic of the Philippines',
+            'organizationLine' => 'Gingoog City Government Employees Association',
+            'acronymLine' => '(GCGEA)',
+            'addressLine' => 'City Hall Compound, Gingoog City',
+            'leftLogo' => '/logo.png',
+            'rightLogo' => '/city-seal-logo.png',
+            'showGeneratedDate' => true,
+            'checkTemplate' => [
+                'backgroundColor' => '#E8F3E8',
+                'heading' => '',
+                'subheading' => '',
+                'payeeLabel' => 'Pay to the order of',
+                'currencyLabel' => 'Pesos',
+                'memoPrefix' => 'Memo:',
+                'primarySignatoryName' => 'Joy Fatima C. Baguiz',
+                'primarySignatoryTitle' => 'Treasurer',
+                'secondarySignatoryName' => 'Casimiro T. Guno',
+                'secondarySignatoryTitle' => 'President',
+                'horizontalMargin' => 0.45,
+                'headerTop' => 0.25,
+                'payeeTop' => 1.05,
+                'wordsTop' => 1.65,
+                'footerBottom' => 0.42,
+            ],
+            'categoryTemplates' => [
+                'member' => $this->defaultReportDesign('classic', '#1E3A8A', '#E8EDF3', 9, 'center', 'auto', 'a4'),
+                'contribution' => $this->defaultReportDesign('modern', '#166534', '#DCFCE7', 9, 'left', 'auto', 'a4', true),
+                'loan' => $this->defaultReportDesign('modern', '#9A3412', '#FFEDD5', 9, 'left', 'landscape', 'legal', true),
+                'benefit' => $this->defaultReportDesign('classic', '#7E22CE', '#F3E8FF', 9, 'center', 'auto', 'a4', true),
+                'financial' => $this->defaultReportDesign('compact', '#0F172A', '#E2E8F0', 8, 'left', 'landscape', 'letter', true),
+            ],
+        ];
+    }
+
+    private function defaultReportDesign(
+        string $preset,
+        string $primaryColor,
+        string $headerBackground,
+        int $bodyFontSize,
+        string $titleAlignment,
+        string $orientation,
+        string $paperSize,
+        bool $stripedRows = false,
+    ): array {
+        $textStyle = [
+            'fontFamily' => 'Arial',
+            'fontSize' => 9,
+            'fontWeight' => 'normal',
+            'fontStyle' => 'normal',
+            'textDecoration' => 'none',
+            'textColor' => '#111111',
+            'textAlignment' => 'left',
+        ];
+
+        $design = [
+            'preset' => $preset,
+            'primaryColor' => $primaryColor,
+            'headerBackground' => $headerBackground,
+            'bodyFontSize' => $bodyFontSize,
+            'bodyFontFamily' => 'Arial',
+            'bodyFontWeight' => 'normal',
+            'bodyFontStyle' => 'normal',
+            'bodyTextDecoration' => 'none',
+            'bodyTextColor' => '#111111',
+            'bodyTextAlignment' => 'left',
+            'stripedRows' => $stripedRows,
+            'showBorders' => true,
+            'titleAlignment' => $titleAlignment,
+            'orientation' => $orientation,
+            'paperSize' => $paperSize,
+            'captionText' => '',
+            'noteText' => '',
+            'captionStyle' => $textStyle,
+            'noteStyle' => $textStyle,
+        ];
+
+        return [
+            ...$design,
+            'excelTemplate' => $design,
+        ];
     }
 }
