@@ -311,9 +311,9 @@ class SystemSettingController extends Controller
                 'secondarySignatoryTitle' => 'President',
                 'horizontalMargin' => 0.45,
                 'headerTop' => 0.25,
-                'payeeTop' => 0.9,
-                'wordsTop' => 1.35,
-                'footerBottom' => 1.05,
+                'payeeTop' => 1.05,
+                'wordsTop' => 1.65,
+                'footerBottom' => 0.42,
             ],
             'categoryTemplates' => [
                 'member' => $this->defaultReportDesign('classic', '#1E3A8A', '#E8EDF3', 9, 'center', 'auto', 'a4'),
