@@ -96,6 +96,8 @@ class SystemSettingController extends Controller
                 'value.authorizedSignatoryName' => ['required', 'string', 'max:150'],
                 'value.authorizedSignatoryPosition' => ['required', 'string', 'max:150'],
                 'value.treasurerName' => ['required', 'string', 'max:150'],
+                'value.bookkeeperName' => ['required', 'string', 'max:150'],
+                'value.auditorName' => ['required', 'string', 'max:150'],
                 'value.presidentName' => ['required', 'string', 'max:150'],
             ]);
         }

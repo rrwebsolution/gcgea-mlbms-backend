@@ -36,6 +36,7 @@ use App\Http\Controllers\PayrollImportController;
 use App\Http\Controllers\ReloanController;
 use App\Http\Controllers\RemittanceBreakdownReportController;
 use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\FinancialStatementReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SystemBackupController;
 use App\Http\Controllers\SystemSettingController;
@@ -66,6 +67,10 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::get('/global-search', GlobalSearchController::class);
     Route::post('/report-exports/pdf', [ReportExportController::class, 'pdf']);
     Route::post('/report-exports/excel', [ReportExportController::class, 'excel']);
+    Route::get('/reports/financial-statement', [FinancialStatementReportController::class, 'show']);
+    Route::put('/reports/financial-statement', [FinancialStatementReportController::class, 'update']);
+    Route::post('/reports/financial-statement/pdf', [FinancialStatementReportController::class, 'pdf']);
+    Route::post('/reports/financial-statement/excel', [FinancialStatementReportController::class, 'excel']);
 
     // Bundles roles/all, users/all, offices/all, loan-types, benefit-types, deduction-types,
     // and loan-settings into one response — see LookupsController for why.
