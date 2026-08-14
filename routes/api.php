@@ -42,6 +42,7 @@ use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SystemBackupController;
 use App\Http\Controllers\SystemSettingController;
+use App\Http\Controllers\TransactionReportController;
 use App\Http\Controllers\UnauditedFinancialReportController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -79,6 +80,7 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::post('/reports/financial-condition/{year}/pdf', [FinancialConditionStatementController::class, 'pdf'])->whereNumber('year');
     Route::post('/reports/financial-condition/{year}/excel', [FinancialConditionStatementController::class, 'excel'])->whereNumber('year');
     Route::post('/reports/unaudited-financial/generate', [UnauditedFinancialReportController::class, 'generate']);
+    Route::get('/reports/transactions', [TransactionReportController::class, 'index']);
 
     // Bundles roles/all, users/all, offices/all, loan-types, benefit-types, deduction-types,
     // and loan-settings into one response — see LookupsController for why.

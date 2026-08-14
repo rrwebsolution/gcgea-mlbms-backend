@@ -78,6 +78,7 @@ class SystemSettingController extends Controller
                 ])],
                 'value.recordsPerPage' => ['required', 'integer', Rule::in([10, 25, 50, 100])],
                 'value.membershipRegistrationFee' => ['required', 'numeric', 'min:0', 'max:100000'],
+                'value.requireMembershipFeeForActivation' => ['required', 'boolean'],
                 'value.maintenanceMode' => ['required', 'boolean'],
                 'value.enableAlertTranslations' => ['required', 'boolean'],
             ]);

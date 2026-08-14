@@ -7,6 +7,7 @@ use App\Models\BenefitType;
 use App\Models\Loan;
 use App\Models\Member;
 use App\Models\SystemSetting;
+use App\Support\MembershipFeePolicy;
 use Carbon\Carbon;
 
 /**
@@ -41,12 +42,13 @@ class BenefitEligibilityService
 
         // Registration only records the fee is owed (MemberController::recordMembershipFee()) —
         // it must actually be Posted via Treasury > Payments before this member can claim a benefit.
-        $membershipFeePaid = $member->membershipFeePayment?->status === 'Posted';
+        $membershipFeeRequired = MembershipFeePolicy::isRequired();
+        $membershipFeePaid = MembershipFeePolicy::isSatisfied($member);
         $checks[] = [
-            'label' => 'Membership Registration Fee Paid',
+            'label' => $membershipFeeRequired ? 'Membership Registration Fee Paid' : 'Membership Registration Fee',
             'passed' => $membershipFeePaid,
             'detail' => $membershipFeePaid
-                ? 'Membership registration fee has been paid.'
+                ? ($membershipFeeRequired ? 'Membership registration fee has been paid.' : 'Membership fee enforcement is disabled in General Settings.')
                 : 'Membership registration fee has not been paid yet — post it under Treasury > Payments before this member can claim a benefit.',
         ];
 

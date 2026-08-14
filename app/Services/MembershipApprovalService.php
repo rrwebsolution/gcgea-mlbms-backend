@@ -8,8 +8,10 @@ use App\Models\Member;
 use App\Models\MembershipApprovalSetting;
 use App\Models\User;
 use App\Models\WorkflowDefinition;
+use App\Support\MembershipFeePolicy;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class MembershipApprovalService
@@ -22,9 +24,14 @@ class MembershipApprovalService
     public function process(Member $member, User $actor, string $source): void
     {
         $settings = MembershipApprovalSetting::current();
-        $requiresApproval = $source === 'import'
+        $configuredApproval = $source === 'import'
             ? $settings->imported_members_require_approval
             : $settings->manual_registration_requires_approval;
+        // A member encoded directly in MLBMS must pay the registration fee
+        // before activation. Imports carry a Posted legacy-payment record and
+        // therefore continue through the configured import approval policy.
+        $requiresApproval = $configuredApproval
+            || ($source === 'manual' && ! MembershipFeePolicy::isSatisfied($member));
 
         if (! $requiresApproval && (! $settings->auto_approve_requires_permission || $actor->hasPermission('members.auto_approve'))) {
             $this->autoApprove($member, $actor, $source);
@@ -56,6 +63,12 @@ class MembershipApprovalService
 
     public function markApproved(Member $member, User $actor): array
     {
+        if (! MembershipFeePolicy::isSatisfied($member)) {
+            throw ValidationException::withMessages([
+                'membershipFee' => 'The membership registration fee must be paid under Treasury > Payments before this member can be approved and activated.',
+            ]);
+        }
+
         return [
             'membership_status' => 'Active',
             'registration_status' => 'approved',
@@ -108,6 +121,7 @@ class MembershipApprovalService
             if ($settings->approval_workflow_id && $settings->approval_workflow_id !== $definition->id) {
                 throw new RuntimeException('The selected approval workflow is not the Member Registration workflow.');
             }
+
             return;
         }
 
@@ -129,6 +143,7 @@ class MembershipApprovalService
                 'approver_role_id' => null,
                 'approver_office_id' => null,
             ]);
+
             return;
         }
 

@@ -243,6 +243,7 @@ class MemberImportService
                         continue;
                     }
                     $this->fillOnlyBlanks($existing, $data, $row->resolved_office_id);
+                    $this->postImportedMembershipFee($existing, $membershipRegistrationFee, $user, $data['membership_date'] ?? null);
                     $this->auditLog->record(
                         $user, $existing, 'merge',
                         "Import row {$row->row_number} merged into existing member {$existing->member_number}; only blank fields were filled, nothing overwritten."
@@ -293,14 +294,7 @@ class MemberImportService
                 // membership records, so their registration fee is treated
                 // as already paid instead of creating the Unpaid placeholder
                 // used by a new manual registration.
-                $member->membershipFeePayment()->create([
-                    'reference_number' => 'GCGEA-MF-'.now()->year.'-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT),
-                    'amount' => $membershipRegistrationFee,
-                    'payment_date' => now()->toDateString(),
-                    'payment_method' => 'Member Import',
-                    'received_by' => $user->full_name,
-                    'status' => 'Posted',
-                ]);
+                $this->postImportedMembershipFee($member, $membershipRegistrationFee, $user, $data['membership_date'] ?? null);
 
                 foreach ([1 => 'beneficiary_1', 2 => 'beneficiary_2'] as $priority => $key) {
                     if (! empty($data[$key])) {
@@ -358,6 +352,23 @@ class MemberImportService
         });
 
         return $summary;
+    }
+
+    private function postImportedMembershipFee(Member $member, float $amount, User $user, ?string $membershipDate): void
+    {
+        $payment = $member->membershipFeePayment()->firstOrNew();
+        if ($payment->exists && $payment->status === 'Posted') {
+            return;
+        }
+
+        $payment->fill([
+            'reference_number' => $payment->reference_number ?: 'GCGEA-MF-IMPORT-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT),
+            'amount' => $payment->amount ?: $amount,
+            'payment_date' => $membershipDate ?: $member->membership_date?->toDateString() ?: now()->toDateString(),
+            'payment_method' => 'Imported Membership Record',
+            'received_by' => $user->full_name,
+            'status' => 'Posted',
+        ])->save();
     }
 
     /**

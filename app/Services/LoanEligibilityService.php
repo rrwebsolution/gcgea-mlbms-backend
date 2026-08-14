@@ -8,6 +8,7 @@ use App\Models\Loan;
 use App\Models\LoanSetting;
 use App\Models\LoanType;
 use App\Models\Member;
+use App\Support\MembershipFeePolicy;
 use Carbon\Carbon;
 
 /**
@@ -104,13 +105,14 @@ class LoanEligibilityService
     /** Registration only records the fee is owed (MemberController::recordMembershipFee()) — it must actually be Posted via Treasury > Payments before this member can borrow. */
     public function membershipFeePaidCheck(Member $member): array
     {
-        $paid = $member->membershipFeePayment?->status === 'Posted';
+        $required = MembershipFeePolicy::isRequired();
+        $paid = MembershipFeePolicy::isSatisfied($member);
 
         return [
-            'label' => 'Membership Registration Fee Paid',
+            'label' => $required ? 'Membership Registration Fee Paid' : 'Membership Registration Fee',
             'passed' => $paid,
             'detail' => $paid
-                ? 'Membership registration fee has been paid.'
+                ? ($required ? 'Membership registration fee has been paid.' : 'Membership fee enforcement is disabled in General Settings.')
                 : 'Membership registration fee has not been paid yet — post it under Treasury > Payments before this member can apply for a loan.',
         ];
     }

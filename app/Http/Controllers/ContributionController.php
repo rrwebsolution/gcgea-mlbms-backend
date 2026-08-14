@@ -12,6 +12,7 @@ use App\Models\SystemSetting;
 use App\Services\ContributionFundAllocator;
 use App\Services\DocumentNumberService;
 use App\Support\ApiPagination;
+use App\Support\MembershipFeePolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -144,7 +145,7 @@ class ContributionController extends Controller
         }
 
         $member = Member::find($request->input('memberId'));
-        if ($member && $member->membershipFeePayment?->status !== 'Posted') {
+        if ($member && ! MembershipFeePolicy::isSatisfied($member)) {
             abort(422, 'This member cannot contribute until their membership registration fee has been paid. Post it under Treasury > Payments first.');
         }
 
