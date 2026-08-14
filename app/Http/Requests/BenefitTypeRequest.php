@@ -32,6 +32,7 @@ class BenefitTypeRequest extends FormRequest
             'prorationTiers.*.minMonths' => ['required_with:prorationTiers', 'integer', 'min:0'],
             'prorationTiers.*.maxMonths' => ['nullable', 'integer', 'gte:prorationTiers.*.minMonths'],
             'prorationTiers.*.percentage' => ['required_with:prorationTiers', 'numeric', 'min:0', 'max:100'],
+            'prorationTiers.*.membershipScope' => ['sometimes', Rule::in(['all', 'legacy', 'new'])],
             'fyAmounts' => ['sometimes', 'array'],
             'fyAmounts.*.fiscalYear' => ['nullable', 'integer', 'min:2000'],
             'fyAmounts.*.baseAmount' => ['required_with:fyAmounts', 'numeric', 'min:0'],

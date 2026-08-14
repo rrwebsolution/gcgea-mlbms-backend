@@ -23,6 +23,8 @@ use App\Models\SystemSetting;
  */
 class BenefitProrationService
 {
+    public const RESOLUTION_27_EFFECTIVE_MEMBERSHIP_DATE = '2026-09-01';
+
     /**
      * Distinct paid periods on record for the member, against the ledger the
      * benefit type prorates against.
@@ -64,12 +66,24 @@ class BenefitProrationService
             ->count('contribution_period');
     }
 
-    public function tierFor(BenefitType $benefitType, int $months): ?BenefitTypeProrationTier
+    public function tierFor(BenefitType $benefitType, Member $member, int $months): ?BenefitTypeProrationTier
     {
+        $scope = $this->membershipScope($benefitType, $member);
+
         return $benefitType->prorationTiers->first(
-            fn (BenefitTypeProrationTier $tier) => $months >= $tier->min_months
+            fn (BenefitTypeProrationTier $tier) => in_array($tier->membership_scope, ['all', $scope], true)
+                && $months >= $tier->min_months
                 && ($tier->max_months === null || $months <= $tier->max_months)
         );
+    }
+
+    public function membershipScope(BenefitType $benefitType, Member $member): string
+    {
+        if ($benefitType->proration_basis !== 'pabaon') {
+            return 'all';
+        }
+
+        return $member->membership_date?->gte(self::RESOLUTION_27_EFFECTIVE_MEMBERSHIP_DATE) ? 'new' : 'legacy';
     }
 
     /**
@@ -115,10 +129,10 @@ class BenefitProrationService
         }
 
         $months = $this->monthsPaid($member, $benefitType->proration_basis);
-        $tier = $this->tierFor($benefitType, $months);
+        $tier = $this->tierFor($benefitType, $member, $months);
         $base = $this->baseAmount($benefitType, $fiscalYear);
         $amount = $tier ? round($base * ((float) $tier->percentage) / 100, 2) : 0.0;
 
-        return ['amount' => $amount, 'monthsPaid' => $months, 'tier' => $tier];
+        return ['amount' => $amount, 'monthsPaid' => $months, 'tier' => $tier, 'membershipScope' => $this->membershipScope($benefitType, $member)];
     }
 }

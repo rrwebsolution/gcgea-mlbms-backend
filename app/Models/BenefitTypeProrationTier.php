@@ -9,6 +9,7 @@ class BenefitTypeProrationTier extends Model
 {
     protected $fillable = [
         'benefit_type_id',
+        'membership_scope',
         'min_months',
         'max_months',
         'percentage',

@@ -26,6 +26,7 @@ class BenefitTypeResource extends JsonResource
             'prorationBasis' => $this->proration_basis,
             'prorationTiers' => $this->whenLoaded('prorationTiers', fn () => $this->prorationTiers->map(fn ($tier) => [
                 'id' => (string) $tier->id,
+                'membershipScope' => $tier->membership_scope,
                 'minMonths' => (int) $tier->min_months,
                 'maxMonths' => $tier->max_months === null ? null : (int) $tier->max_months,
                 'percentage' => (float) $tier->percentage,

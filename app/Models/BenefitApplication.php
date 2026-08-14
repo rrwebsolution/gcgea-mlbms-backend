@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 
@@ -52,6 +53,11 @@ class BenefitApplication extends Model
     public function benefitType(): BelongsTo
     {
         return $this->belongsTo(BenefitType::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(BenefitDocument::class);
     }
 
     public function approvalInstance(): MorphOne

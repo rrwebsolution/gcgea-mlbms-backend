@@ -55,6 +55,7 @@ class BenefitTypeController extends Controller
         foreach ($request->prorationTiersInput() as $tier) {
             $benefitType->prorationTiers()->create([
                 'min_months' => $tier['minMonths'],
+                'membership_scope' => $tier['membershipScope'] ?? 'all',
                 'max_months' => $tier['maxMonths'] ?? null,
                 'percentage' => $tier['percentage'],
             ]);

@@ -28,6 +28,7 @@ class BenefitApplicationResource extends JsonResource
             'incidentDate' => $this->incident_date?->toDateString(),
             'beneficiaryOrRecipient' => $this->beneficiary_or_recipient,
             'requirements' => $this->requirements ?? [],
+            'documents' => BenefitDocumentResource::collection($this->whenLoaded('documents')),
             'status' => $this->status,
             'draftCurrentStep' => $this->draft_current_step,
             'releaseDate' => $this->release_date?->toDateString(),

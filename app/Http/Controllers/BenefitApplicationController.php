@@ -48,7 +48,7 @@ class BenefitApplicationController extends Controller
 
     public function show(BenefitApplication $benefit)
     {
-        return new BenefitApplicationResource($benefit->load(['member.office', 'benefitType']));
+        return new BenefitApplicationResource($benefit->load(['member.office', 'benefitType', 'documents']));
     }
 
     public function review(Request $request, BenefitApplication $benefit)

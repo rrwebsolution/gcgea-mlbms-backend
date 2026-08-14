@@ -97,17 +97,20 @@ class BenefitTypeSeeder extends Seeder
      */
     private function seedResolution242026CashPabaonProgram(): void
     {
-        $tiers = [
+        $resolution27Tiers = [
             [12, 35, 12], [36, 47, 15], [48, 59, 20], [60, 71, 35],
             [72, 83, 40], [84, 95, 45], [96, 107, 50], [108, 119, 55],
             [120, 131, 65], [132, 143, 70], [144, 155, 75], [156, 167, 80],
             [168, 179, 90], [180, null, 100],
         ];
+        $resolution24Tiers = [
+            [12, 24, 25], [25, 60, 50], [61, 96, 75], [97, null, 100],
+        ];
 
         $benefitType = BenefitType::updateOrCreate(
             ['name' => 'Cash Pabaon Program'],
             [
-                'description' => 'Prorated by months of paid Pabaon deductions; 100% base escalates by fiscal year (Resolution No. 24-2026, Table 2).',
+                'description' => 'Cash Pabaon proration: Resolution 24-2026 for members before September 1, 2026; Resolution 27-2026 for new members from September 1, 2026 onward.',
                 'default_amount' => 70000,
                 'maximum_amount' => 100000,
                 'proration_basis' => 'pabaon',
@@ -121,12 +124,16 @@ class BenefitTypeSeeder extends Seeder
         );
 
         $benefitType->prorationTiers()->delete();
-        foreach ($tiers as [$min, $max, $pct]) {
-            $benefitType->prorationTiers()->create(['min_months' => $min, 'max_months' => $max, 'percentage' => $pct]);
+        foreach ($resolution24Tiers as [$min, $max, $pct]) {
+            $benefitType->prorationTiers()->create(['membership_scope' => 'legacy', 'min_months' => $min, 'max_months' => $max, 'percentage' => $pct]);
+        }
+        foreach ($resolution27Tiers as [$min, $max, $pct]) {
+            $benefitType->prorationTiers()->create(['membership_scope' => 'new', 'min_months' => $min, 'max_months' => $max, 'percentage' => $pct]);
         }
 
         $benefitType->fyAmounts()->delete();
         $benefitType->fyAmounts()->createMany([
+            ['fiscal_year' => 2025, 'base_amount' => 60000],
             ['fiscal_year' => 2026, 'base_amount' => 70000],
             ['fiscal_year' => 2027, 'base_amount' => 80000],
             ['fiscal_year' => 2028, 'base_amount' => 90000],

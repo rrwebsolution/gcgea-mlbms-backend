@@ -7,6 +7,7 @@ use App\Http\Controllers\AnnualBudgetController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BenefitApplicationController;
+use App\Http\Controllers\BenefitDocumentController;
 use App\Http\Controllers\BenefitTypeController;
 use App\Http\Controllers\BulkPayrollDeductionController;
 use App\Http\Controllers\ContributionController;
@@ -16,6 +17,8 @@ use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\DeductionTypeController;
 use App\Http\Controllers\DisbursementController;
 use App\Http\Controllers\EmploymentStatusController;
+use App\Http\Controllers\FinancialConditionStatementController;
+use App\Http\Controllers\FinancialStatementReportController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\LegacyLoanImportController;
 use App\Http\Controllers\LoanController;
@@ -36,10 +39,10 @@ use App\Http\Controllers\PayrollImportController;
 use App\Http\Controllers\ReloanController;
 use App\Http\Controllers\RemittanceBreakdownReportController;
 use App\Http\Controllers\ReportExportController;
-use App\Http\Controllers\FinancialStatementReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SystemBackupController;
 use App\Http\Controllers\SystemSettingController;
+use App\Http\Controllers\UnauditedFinancialReportController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -71,6 +74,11 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::put('/reports/financial-statement', [FinancialStatementReportController::class, 'update']);
     Route::post('/reports/financial-statement/pdf', [FinancialStatementReportController::class, 'pdf']);
     Route::post('/reports/financial-statement/excel', [FinancialStatementReportController::class, 'excel']);
+    Route::get('/reports/financial-condition', [FinancialConditionStatementController::class, 'show']);
+    Route::put('/reports/financial-condition', [FinancialConditionStatementController::class, 'update']);
+    Route::post('/reports/financial-condition/{year}/pdf', [FinancialConditionStatementController::class, 'pdf'])->whereNumber('year');
+    Route::post('/reports/financial-condition/{year}/excel', [FinancialConditionStatementController::class, 'excel'])->whereNumber('year');
+    Route::post('/reports/unaudited-financial/generate', [UnauditedFinancialReportController::class, 'generate']);
 
     // Bundles roles/all, users/all, offices/all, loan-types, benefit-types, deduction-types,
     // and loan-settings into one response — see LookupsController for why.
@@ -264,6 +272,8 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::get('/benefits/all', [BenefitApplicationController::class, 'all']);
     Route::get('/benefits', [BenefitApplicationController::class, 'index']);
     Route::post('/benefits', [BenefitApplicationController::class, 'store']);
+    Route::post('/benefits/{benefit}/documents', [BenefitDocumentController::class, 'store']);
+    Route::get('/benefits/{benefit}/documents/{document}/file', [BenefitDocumentController::class, 'show']);
     Route::get('/benefits/{benefit}', [BenefitApplicationController::class, 'show']);
     Route::put('/benefits/{benefit}', [BenefitApplicationController::class, 'update']);
     Route::delete('/benefits/{benefit}', [BenefitApplicationController::class, 'destroy']);
