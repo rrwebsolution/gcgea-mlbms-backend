@@ -79,19 +79,4 @@ class LoanRequest extends FormRequest
             'boardResolutionDocumentPath' => ['nullable', 'string'],
         ];
     }
-
-    public function withValidator($validator): void
-    {
-        $validator->after(function ($validator) {
-            if ($this->boolean('asDraft')) return;
-
-            $requirements = collect($this->input('requirements', []));
-            if ($requirements->isEmpty() || $requirements->contains(fn ($item) => ! ($item['completed'] ?? false))) {
-                $validator->errors()->add(
-                    'requirements',
-                    'Complete all required loan requirements before submitting. Supporting file uploads are optional.'
-                );
-            }
-        });
-    }
 }
