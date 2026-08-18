@@ -97,6 +97,10 @@ test('loan happy path progresses through review, treasury review, approve, relea
     $this->workflow->act($this->loan, $this->loanOfficer, 'review');
     expect($this->loan->fresh()->status)->toBe('Under Review');
 
+    // Treasurer doesn't get loans.review by default — an admin has to opt this
+    // org into the Treasury Review stage via Roles & Permissions.
+    Role::where('code', 'treasurer')->first()->permissions()->attach('loans.review');
+
     $this->workflow->act($this->loan, $this->treasurer, 'review');
     expect($this->loan->fresh()->status)->toBe('For Approval');
 
