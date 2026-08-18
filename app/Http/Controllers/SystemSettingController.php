@@ -192,6 +192,8 @@ class SystemSettingController extends Controller
                 'value.checkTemplate.payeeTop' => ['required', 'numeric', 'min:0', 'max:3'],
                 'value.checkTemplate.wordsTop' => ['required', 'numeric', 'min:0', 'max:3'],
                 'value.checkTemplate.footerBottom' => ['required', 'numeric', 'min:0', 'max:2'],
+                'value.loanApplicationForm' => ['required', 'array'],
+                'value.loanApplicationForm.enabled' => ['required', 'boolean'],
                 'value.categoryTemplates' => ['required', 'array', 'size:5'],
             ]);
 
@@ -317,6 +319,9 @@ class SystemSettingController extends Controller
                 'payeeTop' => 1.05,
                 'wordsTop' => 1.65,
                 'footerBottom' => 0.42,
+            ],
+            'loanApplicationForm' => [
+                'enabled' => true,
             ],
             'categoryTemplates' => [
                 'member' => $this->defaultReportDesign('classic', '#1E3A8A', '#E8EDF3', 9, 'center', 'auto', 'a4'),

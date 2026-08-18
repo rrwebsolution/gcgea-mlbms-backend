@@ -29,6 +29,7 @@ class UserRequest extends FormRequest
             'roleId' => ['required', 'exists:roles,id'],
             'additionalRoleIds' => ['array'],
             'additionalRoleIds.*' => ['exists:roles,id'],
+            'memberId' => ['nullable', 'exists:members,id', Rule::unique('users', 'member_id')->ignore($userId)],
             'status' => ['required', Rule::in(['Active', 'Inactive', 'Disabled'])],
             'requirePasswordChange' => ['boolean'],
             'allowedPermissions' => ['array'],

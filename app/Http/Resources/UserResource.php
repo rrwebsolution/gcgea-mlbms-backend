@@ -25,6 +25,7 @@ class UserResource extends JsonResource
             'roleId' => $this->role_id !== null ? (string) $this->role_id : null,
             'roleName' => $this->role?->name,
             'roleIds' => $this->allRoles()->pluck('id')->map(fn ($id) => (string) $id)->values(),
+            'memberId' => $this->member_id !== null ? (string) $this->member_id : null,
             'permissions' => $this->effectivePermissionCodes(),
             'avatarUrl' => $this->avatar_url,
             'status' => $this->status,

@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
-    private const WITH = ['role', 'additionalRoles', 'allowedPermissions', 'deniedPermissions'];
+    private const WITH = ['role', 'additionalRoles', 'allowedPermissions', 'deniedPermissions', 'member'];
 
     public function index(Request $request)
     {
@@ -77,6 +77,7 @@ class UserController extends Controller
                 'contact_number' => $request->input('contactNumber'),
                 'password' => Hash::make($request->string('password')->toString()),
                 'role_id' => $request->input('roleId'),
+                'member_id' => $request->input('memberId'),
                 'require_password_change' => $request->boolean('requirePasswordChange')
                     || SystemSetting::security()['requirePasswordChangeOnFirstLogin'],
                 'remarks' => $request->input('remarks'),
@@ -106,6 +107,7 @@ class UserController extends Controller
                 'email' => $request->string('email')->toString(),
                 'contact_number' => $request->input('contactNumber'),
                 'role_id' => $request->input('roleId'),
+                'member_id' => $request->input('memberId'),
                 'require_password_change' => $request->boolean('requirePasswordChange'),
                 'remarks' => $request->input('remarks'),
                 'status' => $request->string('status')->toString(),

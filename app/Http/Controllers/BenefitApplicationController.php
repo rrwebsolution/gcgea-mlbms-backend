@@ -46,9 +46,24 @@ class BenefitApplicationController extends Controller
         return BenefitApplicationResource::collection($query->orderBy('application_date', 'desc')->get());
     }
 
-    public function show(BenefitApplication $benefit)
+    public function show(Request $request, BenefitApplication $benefit)
     {
+        $this->guardMemberScope($request, $benefit);
+
         return new BenefitApplicationResource($benefit->load(['member.office', 'benefitType', 'documents']));
+    }
+
+    /**
+     * Blocks a member self-service account from reading a benefit application
+     * that isn't their own by ID, even though route-model binding already
+     * resolved it.
+     */
+    private function guardMemberScope(Request $request, BenefitApplication $benefit): void
+    {
+        $memberId = $request->user()?->member_id;
+        if ($memberId && $benefit->member_id !== $memberId) {
+            abort(403, "You don't have permission to perform this action.");
+        }
     }
 
     public function review(Request $request, BenefitApplication $benefit)
@@ -118,7 +133,9 @@ class BenefitApplicationController extends Controller
             abort(403, "You don't have permission to save drafts.");
         }
 
-        $member = Member::findOrFail($request->input('memberId'));
+        // A member self-service account can only ever apply for themselves —
+        // never trust a client-submitted memberId for one of these accounts.
+        $member = Member::findOrFail($request->user()->member_id ?? $request->input('memberId'));
         $this->assertRetirementBenefitAllowed($request, $member, $asDraft);
         $computed = $this->computeBenefitFields($request, $eligibilityService, $prorationService, $member);
         $this->validateSubmissionPolicy($request, $computed);
@@ -297,6 +314,14 @@ class BenefitApplicationController extends Controller
 
     private function applyFilters(Builder $query, Request $request): void
     {
+        // A member self-service account (User::member_id set) is hard-scoped to
+        // its own records — this overrides any status/type filter the client
+        // sends, and applies regardless of what role/permissions the account
+        // otherwise carries.
+        if ($memberId = $request->user()?->member_id) {
+            $query->where('member_id', $memberId);
+        }
+
         if ($search = $request->string('search')->toString()) {
             $query->where(function ($q) use ($search) {
                 $q->where('application_number', 'ilike', "%{$search}%")

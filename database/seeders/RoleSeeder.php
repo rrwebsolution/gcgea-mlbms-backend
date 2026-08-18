@@ -89,6 +89,12 @@ class RoleSeeder extends Seeder
 
         $auditorViewer = array_values(array_unique([...$viewOnly, 'audit_logs.view', 'audit_logs.export', 'drafts.view_all', 'annual_budgets.view', 'disbursements.view']));
 
+        $gcgeaMember = [
+            'dashboard.view',
+            'loans.view', 'loans.create', 'loans.submit',
+            'benefits.view', 'benefits.create', 'benefits.submit',
+        ];
+
         $roles = [
             ['id' => 1, 'name' => 'Super Administrator', 'code' => 'super_administrator', 'description' => 'Full, unrestricted access to all modules and settings.', 'is_system_role' => true, 'permissions' => $allCodes],
             ['id' => 2, 'name' => 'Membership Officer', 'code' => 'membership_officer', 'description' => 'Manages member registration, profiles, and beneficiaries.', 'is_system_role' => true, 'permissions' => $membershipOfficer],
@@ -107,6 +113,7 @@ class RoleSeeder extends Seeder
                 'reports.view', 'reports.member',
                 'drafts.view_own', 'drafts.create', 'drafts.update_own', 'drafts.delete_own', 'drafts.submit',
             ]],
+            ['id' => 11, 'name' => 'GCGEA Member', 'code' => 'gcgea_member', 'description' => 'Self-service account for a GCGEA member — view and create their own loan and benefit applications only.', 'is_system_role' => true, 'permissions' => $gcgeaMember],
         ];
 
         foreach ($roles as $definition) {

@@ -30,6 +30,8 @@ class User extends Authenticatable
         'contact_number',
         'password',
         'role_id',
+        'office_id',
+        'member_id',
         'require_password_change',
         'remarks',
         'status',
@@ -72,6 +74,17 @@ class User extends Authenticatable
     public function office(): BelongsTo
     {
         return $this->belongsTo(Office::class);
+    }
+
+    /**
+     * The Member record this account is a self-service login for. When set, this
+     * user is member-scoped — every loan/benefit read or write is forced to this
+     * member, regardless of whatever role/permissions the account also carries.
+     * See LoanController/BenefitApplicationController for the enforcement.
+     */
+    public function member(): BelongsTo
+    {
+        return $this->belongsTo(Member::class);
     }
 
     /** Roles stacked on top of the primary role. */
