@@ -90,11 +90,14 @@ beforeEach(function () {
     ]);
 });
 
-test('loan happy path progresses through review, approve, release', function () {
+test('loan happy path progresses through review, treasury review, approve, release', function () {
     $this->workflow->startInstance($this->loan, 'loan_application', $this->loanOfficer);
     expect($this->loan->fresh()->status)->toBe('Under Review');
 
     $this->workflow->act($this->loan, $this->loanOfficer, 'review');
+    expect($this->loan->fresh()->status)->toBe('Under Review');
+
+    $this->workflow->act($this->loan, $this->treasurer, 'review');
     expect($this->loan->fresh()->status)->toBe('For Approval');
 
     $this->workflow->act($this->loan, $this->approvingOfficer, 'approve');
@@ -109,7 +112,7 @@ test('loan happy path progresses through review, approve, release', function () 
 
     expect($this->loan->fresh()->status)->toBe('Released');
     expect($instance->status)->toBe('released');
-    expect($this->workflow->historyFor($this->loan->fresh()))->toHaveCount(4);
+    expect($this->workflow->historyFor($this->loan->fresh()))->toHaveCount(5);
 });
 
 test('rejecting at the review stage marks the loan rejected and stops the workflow', function () {

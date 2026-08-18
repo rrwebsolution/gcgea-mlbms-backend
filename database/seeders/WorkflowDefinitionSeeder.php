@@ -62,6 +62,17 @@ class WorkflowDefinitionSeeder extends Seeder
             'is_final' => false,
         ]);
         $loanApplication->stages()->updateOrCreate(['sequence' => 2], [
+            'code' => 'treasury_review',
+            'label' => 'Treasury Review',
+            'stage_type' => 'review',
+            'approver_type' => 'role',
+            'approver_role_id' => $treasurer,
+            'approver_user_id' => null,
+            'approver_office_id' => null,
+            'required_permission_code' => 'loans.review',
+            'is_final' => false,
+        ]);
+        $loanApplication->stages()->updateOrCreate(['sequence' => 3], [
             'code' => 'approve',
             'label' => 'Approving Officer / President Approval',
             'stage_type' => 'approve',
@@ -72,7 +83,7 @@ class WorkflowDefinitionSeeder extends Seeder
             'required_permission_code' => 'loans.approve',
             'is_final' => false,
         ]);
-        $loanApplication->stages()->updateOrCreate(['sequence' => 3], [
+        $loanApplication->stages()->updateOrCreate(['sequence' => 4], [
             'code' => 'release',
             'label' => 'Treasurer Release',
             'stage_type' => 'release',
