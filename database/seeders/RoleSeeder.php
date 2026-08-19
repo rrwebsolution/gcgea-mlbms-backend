@@ -91,7 +91,7 @@ class RoleSeeder extends Seeder
 
         $gcgeaMember = [
             'dashboard.view',
-            'loans.view', 'loans.create', 'loans.submit',
+            'loans.view', 'loans.create', 'loans.submit', 'loans.reloan',
             'benefits.view', 'benefits.create', 'benefits.submit',
         ];
 

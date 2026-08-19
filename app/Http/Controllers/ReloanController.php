@@ -27,6 +27,7 @@ class ReloanController extends Controller
         if (! $request->user()->hasPermission('loans.view')) {
             abort(403, "You don't have permission to perform this action.");
         }
+        $this->guardMemberScope($request, $loan);
 
         $member = $loan->member;
         $loanType = $loan->loanType;
@@ -46,6 +47,7 @@ class ReloanController extends Controller
         if (! $request->user()->hasPermission('loans.reloan')) {
             abort(403, "You don't have permission to perform this action.");
         }
+        $this->guardMemberScope($request, $loan);
 
         $result = $this->eligibilityService->canCreateReloan(
             $loan,
@@ -64,5 +66,18 @@ class ReloanController extends Controller
         $reloan = $this->reloanService->createDraft($loan, $request->user());
 
         return new LoanResource($reloan->load(['member.office', 'loanType', 'previousLoan']));
+    }
+
+    /**
+     * Blocks a member self-service account from checking eligibility on or
+     * initiating a reloan against a loan that isn't their own, even though
+     * route-model binding already resolved it.
+     */
+    private function guardMemberScope(Request $request, Loan $loan): void
+    {
+        $memberId = $request->user()?->member_id;
+        if ($memberId && $loan->member_id !== $memberId) {
+            abort(403, "You don't have permission to perform this action.");
+        }
     }
 }
