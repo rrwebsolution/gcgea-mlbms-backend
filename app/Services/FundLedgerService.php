@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\BenefitApplication;
+use App\Models\BenefitPayment;
+use App\Models\BenefitType;
 use App\Models\Contribution;
 use App\Models\ContributionFund;
 use App\Models\FundTransaction;
@@ -19,17 +21,38 @@ class FundLedgerService
 
     public function recordBenefitRelease(BenefitApplication $benefit, float $amount, User $actor): FundTransaction
     {
-        $name = strtolower($benefit->benefitType->name);
-        $fundName = match (true) {
+        $fundName = $this->resolveBenefitFundName($benefit->benefitType);
+
+        return $this->recordDebit($fundName, $amount, $benefit, $benefit->application_number, "Benefit released to {$benefit->member->full_name}", $actor);
+    }
+
+    /**
+     * Debits a follow-up payment posted against an already-released benefit's
+     * remaining balance. Keyed on the BenefitPayment's own id (not the parent
+     * benefit's id) so it doesn't collide with recordBenefitRelease()'s row
+     * under the fund_transactions(source_type, source_id, transaction_type)
+     * unique constraint — every follow-up payment gets its own ledger row.
+     */
+    public function recordBenefitFollowUpPayment(BenefitPayment $payment, User $actor): FundTransaction
+    {
+        $benefit = $payment->benefitApplication;
+        $fundName = $this->resolveBenefitFundName($benefit->benefitType);
+
+        return $this->recordDebit($fundName, $payment->amount_paid, $payment, $payment->payment_reference_number, "Follow-up benefit payment to {$benefit->member->full_name}", $actor);
+    }
+
+    private function resolveBenefitFundName(BenefitType $benefitType): string
+    {
+        $name = strtolower($benefitType->name);
+
+        return match (true) {
             str_contains($name, 'cash pabaon') => 'Cash Pabaon Fund',
             str_contains($name, 'mortuary') => 'Mortuary Fund',
             str_contains($name, 'retirement'), str_contains($name, 'separation') => 'Retirement Fund',
             str_contains($name, 'emergency') => 'Emergency Fund',
             str_contains($name, 'operational') => 'Operational Fund',
-            default => throw new DomainException("No contribution fund is mapped to {$benefit->benefitType->name}."),
+            default => throw new DomainException("No contribution fund is mapped to {$benefitType->name}."),
         };
-
-        return $this->recordDebit($fundName, $amount, $benefit, $benefit->application_number, "Benefit released to {$benefit->member->full_name}", $actor);
     }
 
     public function balance(ContributionFund $fund): float
@@ -47,7 +70,7 @@ class FundLedgerService
             : (float) $fund->allocations()->whereHas('contribution', fn ($query) => $query->where('status', 'Posted'))->sum('allocated_amount');
     }
 
-    private function recordDebit(string $fundName, float $amount, Loan|BenefitApplication $source, ?string $reference, string $description, User $actor): FundTransaction
+    private function recordDebit(string $fundName, float $amount, Loan|BenefitApplication|BenefitPayment $source, ?string $reference, string $description, User $actor): FundTransaction
     {
         $fund = ContributionFund::query()->where('fund_name', $fundName)->lockForUpdate()->first();
         if (! $fund) {

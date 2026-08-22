@@ -7,6 +7,7 @@ use App\Http\Controllers\AnnualBudgetController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\BenefitApplicationController;
+use App\Http\Controllers\BenefitPaymentController;
 use App\Http\Controllers\BenefitDocumentController;
 use App\Http\Controllers\BenefitTypeController;
 use App\Http\Controllers\BulkPayrollDeductionController;
@@ -284,6 +285,9 @@ Route::middleware(['auth:sanctum', 'security.timeout', 'password.changed', 'main
     Route::post('/benefits/{benefit}/reject', [BenefitApplicationController::class, 'reject']);
     Route::post('/benefits/{benefit}/return', [BenefitApplicationController::class, 'returnForRevision']);
     Route::post('/benefits/{benefit}/release', [BenefitApplicationController::class, 'release']);
+
+    // Benefit Payments — follow-up payments against an already-released benefit's remaining balance
+    Route::post('/benefit-payments', [BenefitPaymentController::class, 'store']);
 
     // Approval Workflow — generic engine
     Route::get('/my-approvals', [ApprovalController::class, 'index']);

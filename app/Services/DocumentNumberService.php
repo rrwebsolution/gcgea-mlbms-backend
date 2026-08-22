@@ -15,6 +15,7 @@ class DocumentNumberService
         'contribution' => ['prefix' => 'GCGEA-CON', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'benefit' => ['prefix' => 'GCGEA-BEN', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
         'benefitRelease' => ['prefix' => 'GCGEA-BENREL', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
+        'benefitPayment' => ['prefix' => 'GCGEA-BENPAY', 'includeYear' => true, 'yearFormat' => 'YYYY', 'separator' => '-', 'sequenceLength' => 6, 'startingNumber' => 1],
     ];
 
     public function generate(string $type, int $recordSequence, ?CarbonInterface $date = null): string
