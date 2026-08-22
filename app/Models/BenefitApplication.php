@@ -60,6 +60,11 @@ class BenefitApplication extends Model
         return $this->hasMany(BenefitDocument::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(BenefitPayment::class);
+    }
+
     public function approvalInstance(): MorphOne
     {
         return $this->morphOne(ApprovalInstance::class, 'subject');
